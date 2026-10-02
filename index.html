@@ -1,0 +1,1955 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#8fd3ff">
+<meta name="description" content="The Giggle Music Garden: a gentle 3D musical playground for young children.">
+<title>The Giggle Music Garden</title>
+<!-- Lets this file also run from any static server with internet access. Under Vite, "three" comes from node_modules instead. -->
+<script type="importmap">{ "imports": { "three": "https://unpkg.com/three@0.186.1/build/three.module.js" } }</script>
+<style>
+  :root {
+    --ink: #4a2f7a;
+    --cream: #fffaf0;
+    --sun: #ffd84d;
+    --leaf: #6cc75a;
+    --pink: #ff7eb6;
+    --shadow: 0 6px 0 rgba(74, 47, 122, .25), 0 10px 24px rgba(74, 47, 122, .25);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: #bfe9ff;
+    touch-action: none; overscroll-behavior: none;
+    -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+    font-family: ui-rounded, "SF Pro Rounded", "Arial Rounded MT Bold", "Nunito", "Comic Sans MS", system-ui, sans-serif;
+    color: var(--ink);
+  }
+  #scene { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; outline: none; }
+  button {
+    font: inherit; color: inherit; border: 0; padding: 0; cursor: pointer;
+    touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  }
+  button:focus-visible { outline: 5px solid #fff; outline-offset: 4px; }
+  svg { display: block; pointer-events: none; }
+  .hidden { opacity: 0 !important; pointer-events: none !important; visibility: hidden; }
+
+  /* ---------- full-screen overlays ---------- */
+  .overlay {
+    position: fixed; inset: 0; z-index: 10;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: clamp(16px, 4vmin, 40px);
+    padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    background: radial-gradient(ellipse at 50% 40%, rgba(255, 255, 255, .55), rgba(190, 233, 255, .35) 60%, rgba(140, 210, 255, .45));
+    transition: opacity .45s ease, visibility .45s;
+  }
+  .title {
+    margin: 0; text-align: center; line-height: 1.02;
+    font-size: clamp(30px, 7.4vmin, 76px); font-weight: 900; letter-spacing: .5px;
+    color: #fff;
+    text-shadow: 0 4px 0 #b05bd6, 0 8px 0 rgba(74, 47, 122, .35), 0 12px 24px rgba(74, 47, 122, .3);
+  }
+  .title span:nth-child(1) { color: #fff6a8; }
+  .title span:nth-child(2) { color: #ffd1ea; }
+  .title span:nth-child(3) { color: #c9f7c0; }
+  .play-btn {
+    width: clamp(150px, 30vmin, 230px); height: clamp(150px, 30vmin, 230px); border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #a6f08e, #4fbf45 70%);
+    box-shadow: 0 10px 0 #2f8a2c, 0 18px 40px rgba(30, 90, 30, .35), inset 0 -8px 0 rgba(0, 0, 0, .08);
+    display: grid; place-items: center;
+    animation: breathe 2.4s ease-in-out infinite;
+  }
+  .play-btn svg { width: 50%; height: 50%; margin-left: 8%; }
+  .play-btn:active { transform: translateY(6px) scale(.97); box-shadow: 0 4px 0 #2f8a2c; }
+  @keyframes breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+  @keyframes bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+
+  .cards { display: flex; gap: clamp(16px, 5vmin, 56px); align-items: center; justify-content: center; flex-wrap: wrap; }
+  .card {
+    width: clamp(170px, 38vmin, 330px); aspect-ratio: 1 / 1; border-radius: 36px;
+    background: var(--cream);
+    box-shadow: 0 10px 0 rgba(74, 47, 122, .28), 0 20px 40px rgba(74, 47, 122, .25);
+    border: 6px solid #fff;
+    display: grid; place-items: center; overflow: hidden;
+    transition: transform .15s ease;
+  }
+  .card:active { transform: translateY(6px) scale(.97); }
+  .card svg { width: 100%; height: 100%; }
+  .card.free { background: linear-gradient(#bfeaff, #e9fbff 55%, #a8e48c 56%); }
+  .card.copy { background: linear-gradient(#4a4f9c, #7a74c9 55%, #6fbf63 56%); }
+
+  /* ---------- in-game controls ---------- */
+  .round {
+    width: 68px; height: 68px; border-radius: 50%;
+    background: rgba(255, 255, 255, .92);
+    box-shadow: var(--shadow);
+    display: grid; place-items: center;
+    transition: transform .12s ease, opacity .35s, background .2s;
+  }
+  .round svg { width: 64%; height: 64%; }
+  .round:active { transform: translateY(4px) scale(.95); }
+  .round[aria-pressed="true"] { background: #fff4b8; box-shadow: 0 0 0 5px #ffd84d, var(--shadow); }
+  #btnHome {
+    position: fixed; z-index: 20;
+    top: max(14px, env(safe-area-inset-top)); left: max(14px, env(safe-area-inset-left));
+  }
+  #settings {
+    position: fixed; z-index: 30; display: flex; gap: 12px;
+    top: max(14px, env(safe-area-inset-top)); right: max(14px, env(safe-area-inset-right));
+    transition: opacity .35s;
+  }
+  #settings .round { width: 60px; height: 60px; }
+  #btnMute .off, #btnMute.muted .on { display: none; }
+  #btnMute.muted .off { display: block; }
+  #btnEasy .third { transition: opacity .2s; }
+  #btnEasy[aria-pressed="true"] .third { opacity: 0; }
+
+  #copyBar {
+    position: fixed; z-index: 15; left: 50%; transform: translateX(-50%);
+    bottom: max(14px, env(safe-area-inset-bottom));
+    display: flex; align-items: center; gap: 14px;
+    padding: 10px 18px; border-radius: 40px;
+    background: rgba(255, 255, 255, .78);
+    box-shadow: var(--shadow);
+    pointer-events: none;
+    transition: opacity .35s;
+  }
+  #dots { display: flex; gap: 12px; }
+  .dot {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: #e9e4f5; border: 4px solid #cfc6e6;
+    transition: transform .25s cubic-bezier(.3, 1.8, .5, 1), background .2s, border-color .2s, box-shadow .2s;
+  }
+  .dot.lit { background: #fff27a; border-color: #ffc93c; box-shadow: 0 0 18px 6px rgba(255, 230, 90, .85); transform: scale(1.18); }
+  .dot.done { border-color: #fff; transform: scale(1.1); box-shadow: 0 0 0 3px rgba(74, 47, 122, .15); }
+  #hand { width: 48px; height: 48px; transition: opacity .3s; }
+  #hand.show { animation: tap 1.1s ease-in-out infinite; }
+  #hand:not(.show) { opacity: .0; }
+  @keyframes tap { 0%, 100% { transform: translateY(0) rotate(-8deg); } 45% { transform: translateY(8px) rotate(-8deg) scale(.94); } }
+
+  #btnReplay {
+    position: fixed; z-index: 25; left: 50%;
+    bottom: max(18px, env(safe-area-inset-bottom));
+    width: 128px; height: 128px; margin-left: -64px;
+    background: radial-gradient(circle at 35% 30%, #ffc0e0, #ff6fae 70%);
+    box-shadow: 0 9px 0 #c74783, 0 16px 34px rgba(150, 40, 90, .35);
+    animation: breathe 2.2s ease-in-out infinite;
+  }
+  #btnReplay svg { width: 62%; height: 62%; }
+
+  body.reduced * { animation: none !important; }
+  body.reduced .dot { transition: background .2s, border-color .2s; }
+  @media (max-height: 460px) {
+    .round { width: 56px; height: 56px; }
+    #settings .round { width: 52px; height: 52px; }
+    #btnReplay { width: 104px; height: 104px; margin-left: -52px; }
+    .dot { width: 32px; height: 32px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="scene" aria-label="A garden full of musical flowers, mushrooms, a frog and seeds. Tap them to play."></canvas>
+
+<!-- Start: audio is only created after this Play button is pressed -->
+<div id="start" class="overlay">
+  <h1 class="title"><span>The Giggle</span><br><span>Music</span> <span>Garden</span></h1>
+  <button id="btnPlay" class="play-btn" aria-label="Play">
+    <svg viewBox="0 0 64 64"><path d="M18 10 L54 32 L18 54 Z" fill="#fff" stroke="#fff" stroke-width="8" stroke-linejoin="round"/></svg>
+  </button>
+</div>
+
+<!-- Mode picker: two big pictures -->
+<div id="menu" class="overlay hidden">
+  <div class="cards">
+    <button id="btnFree" class="card free" aria-label="Free Play">
+      <svg viewBox="0 0 200 200">
+        <!-- flower bell -->
+        <path d="M58 175 C56 140 62 110 70 82" stroke="#4fb35a" stroke-width="8" fill="none" stroke-linecap="round"/>
+        <ellipse cx="50" cy="150" rx="18" ry="7" fill="#5cc163" transform="rotate(-25 50 150)"/>
+        <path d="M70 40 C52 40 46 58 45 74 C44 86 36 92 34 98 L106 98 C104 92 96 86 95 74 C94 58 88 40 70 40 Z" fill="#ff7eb6" stroke="#d94f8e" stroke-width="3"/>
+        <circle cx="61" cy="70" r="6" fill="#fff"/><circle cx="79" cy="70" r="6" fill="#fff"/>
+        <circle cx="62" cy="71" r="3.5" fill="#2a1f3d"/><circle cx="80" cy="71" r="3.5" fill="#2a1f3d"/>
+        <path d="M62 81 Q70 88 78 81" stroke="#7a2e3a" stroke-width="3" fill="none" stroke-linecap="round"/>
+        <circle cx="70" cy="104" r="6" fill="#fff07a"/>
+        <!-- mushroom drum -->
+        <path d="M128 176 C126 160 128 146 132 136 L160 136 C164 146 166 160 164 176 Z" fill="#fff0d4" stroke="#e0c9a0" stroke-width="3"/>
+        <path d="M108 138 C108 104 184 104 184 138 Z" fill="#ff5a5a" stroke="#d83b3b" stroke-width="3"/>
+        <circle cx="130" cy="122" r="6" fill="#fff"/><circle cx="150" cy="114" r="7" fill="#fff"/><circle cx="168" cy="126" r="5" fill="#fff"/>
+        <circle cx="139" cy="154" r="4" fill="#2a1f3d"/><circle cx="153" cy="154" r="4" fill="#2a1f3d"/>
+        <path d="M140 164 Q146 169 152 164" stroke="#7a2e3a" stroke-width="3" fill="none" stroke-linecap="round"/>
+        <!-- floating notes -->
+        <g fill="#7a4fd0"><ellipse cx="118" cy="62" rx="9" ry="7" transform="rotate(-20 118 62)"/><rect x="124" y="28" width="4" height="34" rx="2"/><path d="M124 28 Q140 32 138 48 Q134 38 126 38 Z"/></g>
+        <g fill="#ff8a3d"><ellipse cx="160" cy="80" rx="8" ry="6" transform="rotate(-20 160 80)"/><ellipse cx="182" cy="72" rx="8" ry="6" transform="rotate(-20 182 72)"/><rect x="165" y="48" width="4" height="32" rx="2"/><rect x="187" y="40" width="4" height="32" rx="2"/><path d="M165 48 L191 40 L191 48 L165 56 Z"/></g>
+        <circle cx="100" cy="30" r="8" fill="none" stroke="#fff" stroke-width="3" opacity=".9"/>
+        <circle cx="34" cy="40" r="6" fill="none" stroke="#fff" stroke-width="3" opacity=".9"/>
+      </svg>
+    </button>
+    <button id="btnCopy" class="card copy" aria-label="Copy the Firefly">
+      <svg viewBox="0 0 200 200">
+        <defs><radialGradient id="ffglow"><stop offset="0" stop-color="#fff9b0"/><stop offset=".45" stop-color="#ffe85a" stop-opacity=".8"/><stop offset="1" stop-color="#ffe85a" stop-opacity="0"/></radialGradient></defs>
+        <circle cx="40" cy="30" r="2.5" fill="#fff"/><circle cx="170" cy="22" r="2" fill="#fff"/><circle cx="120" cy="16" r="2" fill="#fff"/><circle cx="20" cy="80" r="2" fill="#fff"/>
+        <!-- dotted flight path -->
+        <path d="M100 60 C70 70 50 90 52 118" stroke="#fff6a0" stroke-width="5" stroke-dasharray="2 11" stroke-linecap="round" fill="none"/>
+        <path d="M100 60 C130 70 150 90 148 118" stroke="#fff6a0" stroke-width="5" stroke-dasharray="2 11" stroke-linecap="round" fill="none"/>
+        <!-- two flowers -->
+        <path d="M52 186 V140" stroke="#3f9a49" stroke-width="7" stroke-linecap="round"/>
+        <g transform="translate(52 132)"><circle r="22" fill="url(#ffglow)"/><g fill="#ff7eb6"><circle cx="0" cy="-12" r="9"/><circle cx="11" cy="-4" r="9"/><circle cx="7" cy="10" r="9"/><circle cx="-7" cy="10" r="9"/><circle cx="-11" cy="-4" r="9"/></g><circle r="8" fill="#ffd84d"/></g>
+        <path d="M148 186 V140" stroke="#3f9a49" stroke-width="7" stroke-linecap="round"/>
+        <g transform="translate(148 132)"><g fill="#7aa8ff"><circle cx="0" cy="-12" r="9"/><circle cx="11" cy="-4" r="9"/><circle cx="7" cy="10" r="9"/><circle cx="-7" cy="10" r="9"/><circle cx="-11" cy="-4" r="9"/></g><circle r="8" fill="#ffd84d"/></g>
+        <!-- firefly -->
+        <g transform="translate(100 52)">
+          <circle r="38" fill="url(#ffglow)"/>
+          <ellipse cx="-16" cy="-14" rx="16" ry="9" fill="#fff" opacity=".8" transform="rotate(-30 -16 -14)"/>
+          <ellipse cx="16" cy="-14" rx="16" ry="9" fill="#fff" opacity=".8" transform="rotate(30 16 -14)"/>
+          <ellipse cx="0" cy="12" rx="13" ry="15" fill="#fff27a"/>
+          <circle cx="0" cy="-4" r="14" fill="#6a4fa3"/>
+          <circle cx="-5" cy="-5" r="4.5" fill="#fff"/><circle cx="5" cy="-5" r="4.5" fill="#fff"/>
+          <circle cx="-5" cy="-4" r="2.6" fill="#2a1f3d"/><circle cx="5" cy="-4" r="2.6" fill="#2a1f3d"/>
+          <path d="M-5 3 Q0 7 5 3" stroke="#ffd1ea" stroke-width="2.4" fill="none" stroke-linecap="round"/>
+          <path d="M-5 -16 Q-10 -28 -14 -30 M5 -16 Q10 -28 14 -30" stroke="#6a4fa3" stroke-width="2.5" fill="none"/>
+          <circle cx="-14" cy="-30" r="3.5" fill="#fff27a"/><circle cx="14" cy="-30" r="3.5" fill="#fff27a"/>
+        </g>
+      </svg>
+    </button>
+  </div>
+</div>
+
+<!-- Grown-up controls (pictures only): easy patterns, calm motion, sound -->
+<div id="settings" class="hidden">
+  <button id="btnEasy" class="round" aria-label="Easy patterns (two notes)" aria-pressed="false" title="Easy patterns">
+    <svg viewBox="0 0 64 64"><circle cx="14" cy="32" r="9" fill="#ff7eb6"/><circle cx="32" cy="32" r="9" fill="#ffd84d"/><circle class="third" cx="50" cy="32" r="9" fill="#7aa8ff"/></svg>
+  </button>
+  <button id="btnMotion" class="round" aria-label="Calm motion" aria-pressed="false" title="Calm motion">
+    <svg viewBox="0 0 64 64">
+      <path d="M8 46 Q8 52 16 52 H52 Q58 52 58 46 Q58 42 52 42 H24" fill="#ffd1a6" stroke="#b9774a" stroke-width="3"/>
+      <circle cx="30" cy="32" r="15" fill="#b388ff" stroke="#6f4fb8" stroke-width="3"/>
+      <path d="M30 32 m0 -8 a8 8 0 1 1 -7 4 a5 5 0 1 1 7 4" fill="none" stroke="#6f4fb8" stroke-width="3" stroke-linecap="round"/>
+      <path d="M52 42 V30 M57 42 V32" stroke="#b9774a" stroke-width="3" stroke-linecap="round"/>
+      <circle cx="52" cy="29" r="3" fill="#2a1f3d"/><circle cx="57" cy="31" r="3" fill="#2a1f3d"/>
+    </svg>
+  </button>
+  <button id="btnMute" class="round" aria-label="Sound on or off" aria-pressed="false" title="Sound">
+    <svg viewBox="0 0 64 64">
+      <path d="M10 25 H20 L33 14 V50 L20 39 H10 Z" fill="#7bc96f" stroke="#3d7a35" stroke-width="4" stroke-linejoin="round"/>
+      <g class="on" fill="none" stroke="#3d7a35" stroke-width="5" stroke-linecap="round"><path d="M41 24 Q47 32 41 40"/><path d="M47 17 Q57 32 47 47"/></g>
+      <g class="off" fill="none" stroke="#e0566e" stroke-width="6" stroke-linecap="round"><path d="M42 24 L56 40"/><path d="M56 24 L42 40"/></g>
+    </svg>
+  </button>
+</div>
+
+<div id="hud" class="hidden">
+  <button id="btnHome" class="round" aria-label="Back to the pictures" title="Home">
+    <svg viewBox="0 0 64 64"><path d="M16 29 V52 H48 V29" fill="#ffd36b" stroke="#6a4b9a" stroke-width="5" stroke-linejoin="round"/><path d="M9 31 L32 12 L55 31" fill="none" stroke="#6a4b9a" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/><rect x="27" y="37" width="10" height="15" rx="3" fill="#ff8a5c"/></svg>
+  </button>
+  <div id="copyBar" class="hidden" aria-hidden="true">
+    <div id="dots"></div>
+    <div id="hand">
+      <svg viewBox="0 0 64 64">
+        <circle cx="29" cy="12" r="9" fill="none" stroke="#ffd84d" stroke-width="3"/>
+        <path d="M24 36 V13 a5 5 0 0 1 10 0 V30 l3 -1 a4 4 0 0 1 5 3 l3 -1 a4 4 0 0 1 5 3 l2 0 a4 4 0 0 1 4 4 v8 c0 9 -6 15 -15 15 h-4 c-6 0 -10 -3 -13 -8 l-7 -11 a4 4 0 0 1 6 -5 z" fill="#ffe0c2" stroke="#8a5a3c" stroke-width="3" stroke-linejoin="round"/>
+      </svg>
+    </div>
+  </div>
+  <button id="btnReplay" class="round hidden" aria-label="Play again">
+    <svg viewBox="0 0 64 64"><path d="M47 34 A16 16 0 1 1 38 18" fill="none" stroke="#fff" stroke-width="7" stroke-linecap="round"/><path d="M32 7 L46 17 L32 27 Z" fill="#fff" stroke="#fff" stroke-width="3" stroke-linejoin="round"/></svg>
+  </button>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+
+/* =====================================================================
+   Settings (remembered per device when storage is available)
+   ===================================================================== */
+const store = {
+  get(key, fallback) {
+    try { const v = localStorage.getItem('giggle.' + key); return v === null ? fallback : JSON.parse(v); }
+    catch { return fallback; }
+  },
+  set(key, value) { try { localStorage.setItem('giggle.' + key, JSON.stringify(value)); } catch { /* private mode */ } },
+};
+const prefersReduced = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+const settings = {
+  muted: store.get('muted', false),
+  reduced: store.get('reduced', prefersReduced),
+  easy: store.get('easy', false),
+};
+/** Motion factor: everything that moves is scaled by this. */
+const MF = () => (settings.reduced ? 0.35 : 1);
+/** Particle count helper (fewer particles in calm mode). */
+const N = (n) => Math.max(1, Math.round(n * (settings.reduced ? 0.45 : 1)));
+const rand = (a, b) => a + Math.random() * (b - a);
+const TAU = Math.PI * 2;
+
+/* =====================================================================
+   Sound: Web Audio, created only after the Play button is pressed.
+   Every melodic voice uses the C-major pentatonic scale.
+   ===================================================================== */
+const NOTE = {
+  G4: 392.0, A4: 440.0, C5: 523.25, D5: 587.33, E5: 659.25, G5: 783.99, A5: 880.0,
+  C6: 1046.5, D6: 1174.66, E6: 1318.51, G6: 1567.98, A6: 1760.0, C7: 2093.0,
+};
+const PENTA = [NOTE.C5, NOTE.D5, NOTE.E5, NOTE.G5, NOTE.A5];
+
+const Sound = {
+  ctx: null, bus: null, master: null, analyser: null, data: null, noiseBuf: null,
+  voices: 0, peak: 0, meterTimer: 0,
+  VOLUME: 0.5, // gentle master level (after a soft compressor)
+
+  /** Must be called from inside a user gesture (the Play button). */
+  unlock() {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC) return Promise.resolve(false);
+    if (!this.ctx) {
+      const ctx = this.ctx = new AC({ latencyHint: 'interactive' });
+      this.bus = ctx.createGain();
+      const soften = ctx.createBiquadFilter();
+      soften.type = 'lowpass'; soften.frequency.value = 7000; soften.Q.value = 0.4;
+      const comp = ctx.createDynamicsCompressor();
+      comp.threshold.value = -22; comp.knee.value = 14; comp.ratio.value = 5;
+      comp.attack.value = 0.004; comp.release.value = 0.25;
+      this.master = ctx.createGain();
+      this.master.gain.value = settings.muted ? 0 : this.VOLUME;
+      this.analyser = ctx.createAnalyser();
+      this.analyser.fftSize = 8192;
+      this.data = new Float32Array(this.analyser.fftSize);
+      this.bus.connect(soften).connect(comp).connect(this.master).connect(this.analyser).connect(ctx.destination);
+      const len = Math.floor(ctx.sampleRate * 1.0);
+      this.noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+      const ch = this.noiseBuf.getChannelData(0);
+      for (let i = 0; i < len; i++) ch[i] = Math.random() * 2 - 1;
+    }
+    const ctx = this.ctx;
+    try { // iOS needs a sound started inside the gesture
+      const s = ctx.createBufferSource();
+      s.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+      s.connect(ctx.destination); s.start(0);
+    } catch { /* ignore */ }
+    return ctx.resume().then(() => ctx.state === 'running').catch(() => false);
+  },
+  get running() { return !!this.ctx && this.ctx.state === 'running'; },
+  resumeIfNeeded() {
+    if (this.ctx && this.ctx.state === 'suspended') this.ctx.resume().catch(() => {});
+  },
+  setMuted(m) {
+    if (!this.ctx) return;
+    const g = this.master.gain, t = this.ctx.currentTime;
+    g.cancelScheduledValues(t); g.setValueAtTime(g.value, t);
+    g.setTargetAtTime(m ? 0 : this.VOLUME, t, 0.04);
+  },
+  /** Output meter, only switched on by the self-test: remembers the loudest output sample. */
+  meter(on) {
+    clearInterval(this.meterTimer);
+    if (on) this.meterTimer = setInterval(() => this.sample(), 40);
+  },
+  sample() {
+    if (!this.analyser || !this.running) return;
+    this.analyser.getFloatTimeDomainData(this.data);
+    let m = 0;
+    for (let i = 0; i < this.data.length; i++) { const a = Math.abs(this.data[i]); if (a > m) m = a; }
+    if (m > this.peak) this.peak = m;
+  },
+  ok() { return this.running && this.voices < 70; },
+  now(d = 0) { return this.ctx.currentTime + 0.012 + d; },
+
+  osc(freq, { when, peak, attack = 0.005, decay = 0.5, type = 'sine', bendTo = 0, bendTime = 0.1, vibrato = 0 }) {
+    const ctx = this.ctx;
+    const o = ctx.createOscillator(), g = ctx.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, when);
+    if (bendTo) o.frequency.exponentialRampToValueAtTime(bendTo, when + bendTime);
+    g.gain.setValueAtTime(0.0001, when);
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002, peak), when + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, when + attack + decay);
+    o.connect(g).connect(this.bus);
+    const end = when + attack + decay + 0.05;
+    if (vibrato) {
+      const l = ctx.createOscillator(), lg = ctx.createGain();
+      l.frequency.value = 7; lg.gain.value = freq * vibrato;
+      l.connect(lg).connect(o.frequency); l.start(when); l.stop(end);
+    }
+    this.voices++;
+    o.onended = () => { this.voices--; g.disconnect(); };
+    o.start(when); o.stop(end);
+  },
+  noise({ when, peak, attack = 0.003, decay = 0.08, type = 'bandpass', freq = 3000, Q = 1 }) {
+    const ctx = this.ctx;
+    const src = ctx.createBufferSource(), f = ctx.createBiquadFilter(), g = ctx.createGain();
+    src.buffer = this.noiseBuf;
+    f.type = type; f.frequency.value = freq; f.Q.value = Q;
+    g.gain.setValueAtTime(0.0001, when);
+    g.gain.exponentialRampToValueAtTime(peak, when + attack);
+    g.gain.exponentialRampToValueAtTime(0.0001, when + attack + decay);
+    src.connect(f).connect(g).connect(this.bus);
+    this.voices++;
+    src.onended = () => { this.voices--; g.disconnect(); };
+    src.start(when, Math.random() * 0.5); src.stop(when + attack + decay + 0.05);
+  },
+
+  /* ---- instrument voices ---- */
+  bell(freq, vel = 1, delay = 0) {
+    if (!this.ok()) return;
+    const when = this.now(delay);
+    const parts = [[1, 1, 2.2], [2, 0.36, 1.3], [3, 0.14, 0.8], [4.16, 0.07, 0.5], [5.43, 0.035, 0.3]];
+    for (const [r, a, d] of parts) this.osc(freq * r, { when, peak: 0.13 * vel * a, attack: 0.004, decay: d });
+    this.osc(freq * 1.004, { when, peak: 0.04 * vel, attack: 0.02, decay: 1.6 }); // soft shimmer
+  },
+  xylo(freq, vel = 1, delay = 0) {
+    if (!this.ok()) return;
+    const when = this.now(delay);
+    this.osc(freq, { when, peak: 0.2 * vel, attack: 0.002, decay: 0.75 });
+    this.osc(freq * 3, { when, peak: 0.035 * vel, attack: 0.002, decay: 0.2 });
+    this.osc(freq * 6.2, { when, peak: 0.01 * vel, attack: 0.001, decay: 0.06 });
+    this.noise({ when, peak: 0.025 * vel, decay: 0.02, freq: 2600, Q: 2 });
+  },
+  drum(low, vel = 1) {
+    if (!this.ok()) return;
+    const when = this.now();
+    const f = low ? 130.81 : 196.0; // C3 / G3 so even small tablet speakers can play them
+    this.osc(f, { when, peak: 0.34 * vel, attack: 0.003, decay: low ? 0.55 : 0.36, bendTo: 0, type: 'sine' });
+    this.osc(f * 2.3, { when, peak: 0.12 * vel, attack: 0.002, decay: 0.08, bendTo: f, bendTime: 0.08 });
+    this.osc(f * 1.5, { when, peak: 0.05 * vel, attack: 0.003, decay: 0.2, type: 'triangle' });
+    this.noise({ when, peak: 0.07 * vel, decay: 0.05, type: 'lowpass', freq: 900, Q: 0.7 });
+  },
+  shaker(vel = 1) {
+    if (!this.ok()) return;
+    const when = this.now();
+    this.noise({ when, peak: 0.09 * vel, attack: 0.01, decay: 0.07, type: 'highpass', freq: 4200, Q: 0.7 });
+    this.noise({ when: when + 0.11, peak: 0.06 * vel, attack: 0.01, decay: 0.06, type: 'highpass', freq: 4600, Q: 0.7 });
+  },
+  giggle(vel = 1) {
+    if (!this.ok()) return;
+    const when = this.now(0.04);
+    [NOTE.C6, NOTE.D6, NOTE.E6].forEach((f, i) =>
+      this.osc(f, { when: when + i * 0.085, peak: 0.03 * vel, attack: 0.008, decay: 0.07, type: 'triangle', bendTo: f * 1.12, bendTime: 0.06 }));
+  },
+  ribbit() {
+    if (!this.ok()) return;
+    const when = this.now();
+    for (const d of [0, 0.14]) {
+      this.osc(150, { when: when + d, peak: 0.05, attack: 0.01, decay: 0.09, type: 'triangle', bendTo: 115, bendTime: 0.09 });
+      this.noise({ when: when + d, peak: 0.02, attack: 0.01, decay: 0.08, freq: 650, Q: 3 });
+    }
+  },
+  chime(delay = 0) {
+    if (!this.ok()) return;
+    const when = this.now(delay);
+    this.osc(NOTE.G6, { when, peak: 0.035, attack: 0.004, decay: 0.6 });
+    this.osc(NOTE.C7, { when: when + 0.13, peak: 0.03, attack: 0.004, decay: 0.8 });
+  },
+  success() {
+    if (!this.ok()) return;
+    [NOTE.C5, NOTE.E5, NOTE.G5, NOTE.C6].forEach((f, i) => this.bell(f, 0.6, i * 0.12));
+  },
+  pop() {
+    if (!this.ok()) return;
+    const when = this.now();
+    this.osc(380, { when, peak: 0.07, attack: 0.005, decay: 0.16, bendTo: 1100, bendTime: 0.12 });
+    this.chime(0.08);
+  },
+  la(freq) {
+    if (!this.ok()) return;
+    this.osc(freq, { when: this.now(), peak: 0.06, attack: 0.04, decay: 0.5, type: 'triangle', vibrato: 0.012 });
+  },
+};
+
+/* =====================================================================
+   Three.js setup
+   ===================================================================== */
+const canvas = document.getElementById('scene');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+const MAX_PR = Math.min(window.devicePixelRatio || 1, 2);
+let pixelRatio = MAX_PR;
+renderer.setPixelRatio(pixelRatio);
+/** Adaptive resolution: slow devices drop resolution instead of frame rate. */
+const perf = { acc: 0, frames: 0 };
+function adaptResolution(frameDt) {
+  perf.acc += frameDt; perf.frames++;
+  if (perf.acc < 1.5) return;
+  const avg = perf.acc / perf.frames;
+  perf.acc = 0; perf.frames = 0;
+  let next = pixelRatio;
+  if (avg > 1 / 40 && pixelRatio > 0.5) next = Math.max(0.5, pixelRatio * 0.75);
+  else if (avg < 1 / 57 && pixelRatio < MAX_PR) next = Math.min(MAX_PR, pixelRatio * 1.15);
+  if (Math.abs(next - pixelRatio) > 0.01) { pixelRatio = next; renderer.setPixelRatio(pixelRatio); }
+}
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFShadowMap;
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 200);
+const clock = { t: 0 };
+
+function canvasTex(w, h, draw) {
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+
+/* ---- procedural textures ---- */
+const TEX = {
+  sky: canvasTex(4, 256, (g, w, h) => {
+    const gr = g.createLinearGradient(0, 0, 0, h);
+    gr.addColorStop(0, '#6cc6ff'); gr.addColorStop(0.55, '#b8e6ff'); gr.addColorStop(1, '#eafaff');
+    g.fillStyle = gr; g.fillRect(0, 0, w, h);
+  }),
+  glow: canvasTex(128, 128, (g, w) => {
+    const gr = g.createRadialGradient(w / 2, w / 2, 0, w / 2, w / 2, w / 2);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.25, 'rgba(255,255,255,.55)');
+    gr.addColorStop(0.6, 'rgba(255,255,255,.12)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, w, w);
+  }),
+  star: canvasTex(64, 64, (g, w) => {
+    const c = w / 2;
+    const gr = g.createRadialGradient(c, c, 0, c, c, c);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.3, 'rgba(255,255,255,.4)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, w, w);
+    g.fillStyle = '#fff'; g.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * TAU, r = i % 2 ? 5 : 30;
+      g.lineTo(c + Math.cos(a) * r, c + Math.sin(a) * r);
+    }
+    g.fill();
+  }),
+  petal: canvasTex(64, 64, (g) => {
+    g.translate(32, 32);
+    const gr = g.createLinearGradient(0, -28, 0, 28);
+    gr.addColorStop(0, '#ffffff'); gr.addColorStop(1, '#dddddd');
+    g.fillStyle = gr;
+    g.beginPath(); g.moveTo(0, 28);
+    g.bezierCurveTo(26, 10, 18, -26, 0, -28);
+    g.bezierCurveTo(-18, -26, -26, 10, 0, 28); g.fill();
+    g.strokeStyle = 'rgba(0,0,0,.08)'; g.lineWidth = 2; g.beginPath(); g.moveTo(0, 22); g.lineTo(0, -18); g.stroke();
+  }),
+  note: canvasTex(128, 128, (g) => {
+    // bubble
+    g.fillStyle = 'rgba(255,255,255,.42)';
+    g.beginPath(); g.arc(64, 64, 58, 0, TAU); g.fill();
+    g.strokeStyle = 'rgba(255,255,255,.95)'; g.lineWidth = 6;
+    g.beginPath(); g.arc(64, 64, 57, 0, TAU); g.stroke();
+    g.strokeStyle = 'rgba(255,255,255,.9)'; g.lineWidth = 7; g.lineCap = 'round';
+    g.beginPath(); g.arc(64, 64, 44, Math.PI * 1.1, Math.PI * 1.45); g.stroke();
+    // beamed eighth notes (drawn, not a font glyph)
+    g.fillStyle = 'rgba(70,40,110,.95)';
+    const head = (x, y) => { g.save(); g.translate(x, y); g.rotate(-0.4); g.beginPath(); g.ellipse(0, 0, 13, 10, 0, 0, TAU); g.fill(); g.restore(); };
+    head(46, 86); head(84, 78);
+    g.fillRect(55, 40, 6, 46); g.fillRect(93, 32, 6, 46);
+    g.beginPath(); g.moveTo(55, 40); g.lineTo(99, 32); g.lineTo(99, 44); g.lineTo(55, 52); g.fill();
+  }),
+  wing: canvasTex(64, 32, (g) => {
+    g.fillStyle = 'rgba(255,255,255,.85)';
+    g.beginPath(); g.ellipse(32, 16, 30, 14, 0, 0, TAU); g.fill();
+    g.strokeStyle = 'rgba(150,200,255,.7)'; g.lineWidth = 2;
+    g.beginPath(); g.moveTo(4, 16); g.lineTo(58, 12); g.moveTo(20, 16); g.lineTo(40, 26); g.stroke();
+  }),
+  cloud: canvasTex(256, 128, (g) => {
+    g.fillStyle = '#ffffff';
+    for (const [x, y, r] of [[70, 80, 40], [120, 60, 52], [175, 78, 40], [100, 90, 34], [150, 92, 34]]) {
+      g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill();
+    }
+    g.fillStyle = 'rgba(200,225,255,.6)'; g.fillRect(40, 104, 180, 8);
+  }),
+  sun: canvasTex(256, 256, (g) => {
+    g.translate(128, 128);
+    g.fillStyle = '#ffe36a';
+    for (let i = 0; i < 12; i++) {
+      g.save(); g.rotate((i / 12) * TAU);
+      g.beginPath(); g.moveTo(-14, -78); g.lineTo(0, -120); g.lineTo(14, -78); g.fill(); g.restore();
+    }
+    const gr = g.createRadialGradient(-20, -20, 10, 0, 0, 76);
+    gr.addColorStop(0, '#fff6b0'); gr.addColorStop(1, '#ffc93c');
+    g.fillStyle = gr; g.beginPath(); g.arc(0, 0, 74, 0, TAU); g.fill();
+    g.fillStyle = '#7a4a1a';
+    g.beginPath(); g.arc(-24, -12, 8, 0, TAU); g.arc(24, -12, 8, 0, TAU); g.fill();
+    g.strokeStyle = '#7a4a1a'; g.lineWidth = 7; g.lineCap = 'round';
+    g.beginPath(); g.arc(0, 8, 28, 0.2 * Math.PI, 0.8 * Math.PI); g.stroke();
+    g.fillStyle = 'rgba(255,120,120,.5)';
+    g.beginPath(); g.arc(-44, 14, 11, 0, TAU); g.arc(44, 14, 11, 0, TAU); g.fill();
+  }),
+};
+
+scene.background = TEX.sky;
+scene.fog = new THREE.Fog(0xdff5ff, 38, 90);
+
+/* ---- materials & shared geometry ---- */
+const gradientMap = new THREE.DataTexture(new Uint8Array([105, 170, 220, 255]), 4, 1, THREE.RedFormat);
+gradientMap.minFilter = gradientMap.magFilter = THREE.NearestFilter;
+gradientMap.generateMipmaps = false;
+gradientMap.needsUpdate = true;
+const toon = (color, extra = {}) => new THREE.MeshToonMaterial({ color, gradientMap, ...extra });
+
+const G = {
+  sph: new THREE.SphereGeometry(1, 22, 14),
+  sphLo: new THREE.SphereGeometry(1, 10, 7),
+  cyl: new THREE.CylinderGeometry(1, 1, 1, 18),
+  box: new THREE.BoxGeometry(1, 1, 1),
+};
+const M = {
+  white: toon(0xffffff),
+  black: new THREE.MeshBasicMaterial({ color: 0x2a1f3d }),
+  mouth: toon(0x7a2e3a),
+  cheek: toon(0xff9bb5),
+  leaf: toon(0x5cc163),
+  stem: toon(0x4fb35a),
+};
+const hitMat = new THREE.MeshBasicMaterial({ visible: false });
+
+function mesh(geo, mat, { p, s, r } = {}) {
+  const m = new THREE.Mesh(geo, mat);
+  if (p) m.position.set(p[0], p[1], p[2]);
+  if (s !== undefined) (typeof s === 'number' ? m.scale.setScalar(s) : m.scale.set(s[0], s[1], s[2]));
+  if (r) m.rotation.set(r[0], r[1], r[2]);
+  return m;
+}
+const v3 = (x, y, z) => new THREE.Vector3(x, y, z);
+const v2 = (x, y) => new THREE.Vector2(x, y);
+
+/** Damped spring; kick(a) makes it swing to roughly ±a. */
+class Spring {
+  constructor(k = 200, d = 10) { this.k = k; this.d = d; this.x = 0; this.v = 0; }
+  kick(a) { this.v += a * Math.sqrt(this.k); }
+  update(dt) {
+    this.v += (-this.k * this.x - this.d * this.v) * dt;
+    this.x += this.v * dt;
+    return this.x;
+  }
+}
+
+/* ---- lights ---- */
+scene.add(new THREE.HemisphereLight(0xdff4ff, 0x7fc864, 1.7));
+const sunLight = new THREE.DirectionalLight(0xfff4e0, 2.4);
+sunLight.position.set(7, 14, 9);
+sunLight.castShadow = true;
+sunLight.shadow.mapSize.set(1024, 1024);
+Object.assign(sunLight.shadow.camera, { left: -15, right: 15, top: 15, bottom: -15, near: 1, far: 50 });
+sunLight.shadow.bias = -0.0008;
+sunLight.shadow.radius = 3;
+scene.add(sunLight);
+
+/* =====================================================================
+   Particles: petals, note bubbles, sparkles, rings — all procedural
+   ===================================================================== */
+const particles = (() => {
+  const pool = [];
+  for (let i = 0; i < 220; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ transparent: true, depthWrite: false }));
+    sp.visible = false; sp.renderOrder = 5;
+    scene.add(sp);
+    pool.push({ sp, alive: false });
+  }
+  const rings = [];
+  const ringGeo = new THREE.RingGeometry(0.8, 1.0, 48);
+  for (let i = 0; i < 8; i++) {
+    const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, side: THREE.DoubleSide }));
+    m.rotation.x = -Math.PI / 2; m.visible = false;
+    scene.add(m);
+    rings.push({ m, alive: false, t: 0 });
+  }
+  let alive = 0;
+
+  function spawn(kind, pos, color = 0xffffff, o = {}) {
+    const p = pool.find((q) => !q.alive);
+    if (!p) return;
+    const m = settings.reduced ? 0.55 : 1;
+    const mat = p.sp.material;
+    mat.color.set(color);
+    mat.blending = THREE.NormalBlending;
+    mat.rotation = 0;
+    p.kind = kind; p.alive = true; p.t = 0; p.sp.visible = true;
+    p.sp.position.copy(pos);
+    p.vel = new THREE.Vector3();
+    p.spin = 0; p.wob = 0; p.phase = Math.random() * TAU; p.drag = 0; p.lift = 0;
+    if (kind === 'note') {
+      mat.map = TEX.note;
+      p.vel.set(rand(-0.35, 0.35), rand(1.0, 1.5), rand(0.1, 0.4)).multiplyScalar(m);
+      p.life = 2.8; p.size = rand(0.65, 0.85); p.wob = 0.5 * m;
+    } else if (kind === 'petal') {
+      mat.map = TEX.petal;
+      const a = Math.random() * TAU, sp = rand(1.0, 2.2);
+      p.vel.set(Math.cos(a) * sp, rand(1.2, 2.2), Math.sin(a) * sp * 0.6 + 0.4).multiplyScalar(m);
+      p.drag = 1.6; p.lift = 0.9 * m; p.life = 2.6; p.size = rand(0.28, 0.42);
+      p.spin = rand(-4, 4) * m; mat.rotation = Math.random() * TAU; p.wob = 0.3 * m;
+    } else if (kind === 'spark') {
+      mat.map = TEX.star; mat.blending = THREE.AdditiveBlending;
+      const d = new THREE.Vector3(rand(-1, 1), rand(-0.2, 1), rand(-0.5, 1)).normalize();
+      p.vel.copy(d).multiplyScalar(rand(2, 4) * m);
+      p.drag = 3; p.life = rand(0.6, 0.9); p.size = rand(0.3, 0.5);
+    } else if (kind === 'trail') {
+      mat.map = TEX.glow; mat.blending = THREE.AdditiveBlending;
+      p.vel.set(rand(-0.2, 0.2), rand(-0.3, 0.1), 0);
+      p.life = 0.6; p.size = 0.45;
+    } else if (kind === 'confetti') {
+      mat.map = TEX.petal;
+      p.vel.set(rand(-0.3, 0.3), rand(-1.1, -0.7) * (settings.reduced ? 0.7 : 1), 0);
+      p.life = 7; p.size = rand(0.3, 0.45); p.spin = rand(-2, 2) * m; p.wob = 0.8 * m;
+      mat.rotation = Math.random() * TAU;
+    }
+    if (o.size) p.size *= o.size;
+    if (o.vel) p.vel.add(o.vel);
+    mat.opacity = 0;
+    p.sp.scale.setScalar(p.size);
+  }
+
+  function ring(pos, color) {
+    const r = rings.find((q) => !q.alive) || rings[0];
+    r.alive = true; r.t = 0; r.m.visible = true;
+    r.m.position.set(pos.x, 0.06, pos.z);
+    r.m.material.color.set(color);
+  }
+
+  function update(dt) {
+    alive = 0;
+    for (const p of pool) {
+      if (!p.alive) continue;
+      p.t += dt;
+      const u = p.t / p.life;
+      if (u >= 1) { p.alive = false; p.sp.visible = false; continue; }
+      alive++;
+      if (p.drag) p.vel.multiplyScalar(Math.exp(-p.drag * dt));
+      p.vel.y += p.lift * dt;
+      p.sp.position.addScaledVector(p.vel, dt);
+      if (p.wob) p.sp.position.x += Math.sin(p.t * 3 + p.phase) * p.wob * dt;
+      const mat = p.sp.material;
+      mat.rotation += p.spin * dt;
+      if (p.kind === 'note') mat.rotation = Math.sin(p.t * 2.5 + p.phase) * 0.25 * MF();
+      const fadeIn = Math.min(1, p.t / 0.12);
+      const fadeOut = Math.min(1, (1 - u) / 0.35);
+      mat.opacity = Math.min(fadeIn, fadeOut) * (p.kind === 'trail' ? 0.6 : 0.95);
+      let s = p.size;
+      if (p.kind === 'note') s *= 0.8 + 0.25 * Math.min(1, p.t * 2);
+      if (p.kind === 'spark' || p.kind === 'trail') s *= 1 - u * 0.8;
+      p.sp.scale.setScalar(s);
+    }
+    for (const r of rings) {
+      if (!r.alive) continue;
+      r.t += dt;
+      const u = r.t / 0.8;
+      if (u >= 1) { r.alive = false; r.m.visible = false; continue; }
+      const s = 1 + u * (settings.reduced ? 1.6 : 3);
+      r.m.scale.setScalar(s);
+      r.m.material.opacity = 0.75 * (1 - u);
+    }
+  }
+  return { spawn, ring, update, get alive() { return alive; } };
+})();
+
+function burst(pos, color, { notes = 0, petals = 0, sparks = 0, noteColor } = {}) {
+  for (let i = 0; i < N(petals); i++) particles.spawn('petal', pos, color);
+  for (let i = 0; i < (notes ? N(notes) : 0); i++) particles.spawn('note', pos, noteColor ?? color);
+  for (let i = 0; i < (sparks ? N(sparks) : 0); i++) particles.spawn('spark', pos, 0xfff6b0);
+}
+
+/* =====================================================================
+   Cute faces
+   ===================================================================== */
+class Face {
+  constructor(s = 1) {
+    this.group = new THREE.Group();
+    this.eyes = [];
+    for (const sx of [-1, 1]) {
+      const eye = new THREE.Group();
+      eye.position.set(sx * 0.21 * s, 0.08 * s, 0);
+      eye.add(mesh(G.sph, M.white, { s: [0.15 * s, 0.18 * s, 0.08 * s] }));
+      eye.add(mesh(G.sphLo, M.black, { p: [0, -0.01 * s, 0.055 * s], s: [0.095 * s, 0.115 * s, 0.05 * s] }));
+      eye.add(mesh(G.sphLo, M.white, { p: [0.035 * s, 0.045 * s, 0.1 * s], s: 0.034 * s }));
+      this.group.add(eye);
+      this.eyes.push(eye);
+      this.group.add(mesh(G.sphLo, M.cheek, { p: [sx * 0.36 * s, -0.1 * s, -0.02 * s], s: [0.085 * s, 0.055 * s, 0.03 * s] }));
+    }
+    this.smile = mesh(new THREE.TorusGeometry(0.12 * s, 0.025 * s, 6, 14, Math.PI), M.mouth, { p: [0, -0.08 * s, 0.01 * s], r: [0, 0, Math.PI] });
+    this.open = mesh(G.sphLo, M.mouth, { p: [0, -0.15 * s, 0.015 * s], s: [0.1 * s, 0.085 * s, 0.04 * s] });
+    this.open.visible = false;
+    this.openScale = this.open.scale.clone();
+    this.group.add(this.smile, this.open);
+    this.group.traverse((o) => { o.userData.noShadow = true; });
+    this.blinkT = rand(1, 5); this.blink = 0; this.sing = 0; this.squint = 0;
+  }
+  react() { this.sing = 1; this.squint = 1; }
+  update(dt) {
+    this.blinkT -= dt;
+    if (this.blinkT < 0) { this.blink = 0.13; this.blinkT = rand(2.5, 6); }
+    if (this.blink > 0) this.blink -= dt;
+    this.sing = Math.max(0, this.sing - dt * 1.5);
+    this.squint = Math.max(0, this.squint - dt * 1.3);
+    const ey = this.blink > 0 ? 0.12 : 1 - 0.72 * Math.min(1, this.squint * 1.4);
+    for (const e of this.eyes) e.scale.y = ey;
+    const singing = this.sing > 0.08;
+    this.open.visible = singing; this.smile.visible = !singing;
+    if (singing) this.open.scale.copy(this.openScale).multiplyScalar(0.6 + 0.5 * Math.sin(this.sing * Math.PI));
+  }
+}
+
+/* =====================================================================
+   Instruments
+   ===================================================================== */
+const instruments = [];
+const byId = {};
+const hitTargets = [];
+const playLog = []; // every play: { t, id, part, source } (also read by the self-test)
+
+class Instrument {
+  constructor(id, color, ringRadius = 1.6) {
+    this.id = id;
+    this.color = new THREE.Color(color);
+    this.group = new THREE.Group();
+    this.body = new THREE.Group();
+    this.group.add(this.body);
+    this.mats = []; this.faces = []; this.queue = [];
+    this.glow = 0; this.light = 0; this.lightUntil = -1;
+    this.squash = new Spring(260, 12);
+    this.wob = new Spring(70, 4.5);
+    this.focus = new THREE.Object3D();
+    this.body.add(this.focus);
+    this.phase = Math.random() * TAU;
+
+    this.halo = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: TEX.glow, color, transparent: true, opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending,
+    }));
+    this.halo.scale.setScalar(3.6);
+    this.group.add(this.halo);
+
+    this.ring = mesh(new THREE.RingGeometry(ringRadius, ringRadius + 0.35, 48),
+      new THREE.MeshBasicMaterial({ color: 0xfff27a, transparent: true, opacity: 0, depthWrite: false }),
+      { p: [0, 0.04, 0], r: [-Math.PI / 2, 0, 0] });
+    this.group.add(this.ring);
+
+    scene.add(this.group);
+    instruments.push(this); byId[id] = this;
+  }
+  mat(color, extra = {}) {
+    const m = toon(color, { emissive: new THREE.Color(color), emissiveIntensity: 0, ...extra });
+    this.mats.push(m);
+    return m;
+  }
+  addHit(geo, pos, part = null) {
+    const h = new THREE.Mesh(geo, hitMat);
+    h.position.set(pos[0], pos[1], pos[2]);
+    h.userData = { target: this, part };
+    this.group.add(h);
+    hitTargets.push(h);
+    return h;
+  }
+  later(sec, fn) { this.queue.push({ at: clock.t + sec, fn }); }
+  worldFocus(out = new THREE.Vector3()) { return this.focus.getWorldPosition(out); }
+  hoverPoint() { return this.worldFocus().add(v3(0, 1.7, 0.6)); }
+  /** Light up gently (used by the firefly). */
+  lightUp(sec) { this.lightUntil = clock.t + sec; }
+
+  play(part = null, source = 'tap') {
+    if (part === null || part === undefined) part = this.defaultPart();
+    this.sound(part);
+    this.react(part, source);
+    this.glow = 1;
+    for (const f of this.faces) f.react();
+    this.emit(part);
+    playLog.push({ t: +clock.t.toFixed(3), id: this.id, part, source, muted: settings.muted });
+    if (playLog.length > 400) playLog.shift();
+    Game.onPlayed(this, part, source);
+  }
+  defaultPart() { return 0; }
+
+  update(dt, t) {
+    this.squash.update(dt); this.wob.update(dt);
+    if (this.queue.length) {
+      const due = this.queue.filter((q) => q.at <= clock.t);
+      if (due.length) { this.queue = this.queue.filter((q) => q.at > clock.t); due.forEach((q) => q.fn()); }
+    }
+    this.glow = Math.max(0, this.glow - dt * 1.4);
+    const lt = clock.t < this.lightUntil ? 1 : 0;
+    this.light += (lt - this.light) * Math.min(1, dt * 7);
+    const e = Math.max(this.glow * 0.45, this.light * 0.55);
+    for (const m of this.mats) m.emissiveIntensity = e;
+    const pulse = 1 + Math.sin(t * 6) * 0.06 * MF();
+    this.halo.material.opacity = Math.min(0.9, this.glow * 0.5 + this.light * 0.55);
+    this.halo.scale.setScalar(this.haloSize * (1 + this.glow * 0.25) * pulse);
+    this.ring.material.opacity = this.light * 0.9;
+    this.ring.scale.setScalar(pulse);
+    for (const f of this.faces) f.update(dt);
+    this.animate(dt, t);
+  }
+}
+
+/* ---------- Giant flower bell ---------- */
+class FlowerBell extends Instrument {
+  constructor(id, color, note) {
+    super(id, color, 1.25);
+    this.note = note;
+    const H = 4.4;
+    this.dir = 1;
+    this.stretch = new Spring(150, 8);
+    const curve = new THREE.CatmullRomCurve3([v3(0, 0, 0), v3(0.14, H * 0.35, 0), v3(-0.1, H * 0.7, 0.05), v3(0, H, 0.25)]);
+    this.body.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 24, 0.13, 8), M.stem));
+    for (const [sx, y, rz] of [[1, 0.5, 0.45], [-1, 0.9, -0.4], [1, 2.1, 0.55]]) {
+      this.body.add(mesh(G.sph, M.leaf, { p: [sx * 0.55, y, 0.05], s: [0.62, 0.1, 0.3], r: [0, 0, rz] }));
+    }
+    this.head = new THREE.Group();
+    this.head.position.set(0, H, 0.25);
+    this.head.rotation.x = -0.45;
+    this.body.add(this.head);
+    this.inner = new THREE.Group();
+    this.head.add(this.inner);
+    const bellMat = this.mat(color, { side: THREE.DoubleSide });
+    const pts = [[0.05, 0.08], [0.32, 0.02], [0.6, -0.18], [0.76, -0.5], [0.83, -0.9], [0.95, -1.22], [1.18, -1.48], [1.32, -1.56]]
+      .map(([x, y]) => v2(x, y));
+    this.inner.add(new THREE.Mesh(new THREE.LatheGeometry(pts, 40), bellMat));
+    for (let k = 0; k < 7; k++) {
+      const a = (k / 7) * TAU;
+      this.inner.add(mesh(G.sphLo, bellMat, { p: [Math.cos(a) * 1.28, -1.57, Math.sin(a) * 1.28], s: [0.34, 0.1, 0.34] }));
+    }
+    for (let k = 0; k < 5; k++) { // green sepals
+      const a = (k / 5) * TAU;
+      const sep = mesh(G.sphLo, M.leaf, { p: [Math.cos(a) * 0.3, -0.02, Math.sin(a) * 0.3], s: [0.13, 0.07, 0.36] });
+      sep.rotation.y = -a + Math.PI / 2; sep.rotation.x = 0.5;
+      this.inner.add(sep);
+    }
+    this.inner.add(mesh(G.sph, M.leaf, { p: [0, 0.08, 0], s: 0.22 }));
+    this.clapper = new THREE.Group();
+    this.clapper.position.y = -0.1;
+    this.clapper.add(mesh(G.cyl, toon(0xfff0a0), { p: [0, -0.62, 0], s: [0.04, 1.2, 0.04] }));
+    this.clapper.add(mesh(G.sph, this.mat(0xfff07a), { p: [0, -1.32, 0], s: 0.18 }));
+    this.inner.add(this.clapper);
+    const face = new Face(1.35);
+    face.group.position.set(0, -0.86, 0.84);
+    face.group.rotation.x = -0.12;
+    this.inner.add(face.group);
+    this.faces.push(face);
+    this.focus.position.set(0, H - 0.72, 0.6);
+    this.halo.position.copy(this.focus.position);
+    this.haloSize = 3.8;
+    this.addHit(new THREE.SphereGeometry(1.9, 14, 10), [0, H - 0.72, 0.6]);
+    this.addHit(new THREE.BoxGeometry(1.4, H - 1.4, 1.4), [0, (H - 1.4) / 2, 0]);
+  }
+  sound() { Sound.bell(this.note); }
+  react() {
+    const m = MF();
+    this.dir = -this.dir;
+    this.wob.kick(this.dir * 1 * m);
+    this.squash.kick(1 * m);
+    this.stretch.kick(1 * m);
+  }
+  emit() {
+    const p = this.worldFocus().add(v3(0, -0.4, 0.4));
+    burst(p, this.color, { petals: 7, notes: 2, sparks: 4 });
+  }
+  animate(dt, t) {
+    this.stretch.update(dt);
+    const sway = Math.sin(t * 0.9 + this.phase) * 0.05 * MF();
+    this.head.rotation.z = this.wob.x * 0.45 + sway;
+    this.clapper.rotation.z = -this.wob.x * 0.6;
+    const sq = this.squash.x;
+    this.inner.scale.set(1 + sq * 0.16, 1 - sq * 0.2, 1 + sq * 0.16);
+    this.body.scale.y = 1 + this.stretch.x * 0.07;
+  }
+}
+
+/* ---------- Mushroom drum ---------- */
+class MushroomDrum extends Instrument {
+  constructor(id, color, low, R) {
+    super(id, color, R + 0.1);
+    this.low = low;
+    const s = R / 1.45;
+    this.s = s;
+    this.capJump = new Spring(90, 7);
+    this.dotPop = new Spring(220, 9);
+    const stalkPts = [[0, 0], [0.6, 0], [0.7, 0.12], [0.68, 0.45], [0.6, 0.9], [0.5, 1.3], [0, 1.3]].map(([x, y]) => v2(x * s, y * s));
+    this.stalk = new THREE.Mesh(new THREE.LatheGeometry(stalkPts, 32), this.mat(0xfff0d4));
+    this.body.add(this.stalk);
+    const face = new Face(1.3 * s);
+    face.group.position.set(0, 0.62 * s, 0.67 * s);
+    this.stalk.add(face.group);
+    this.faces.push(face);
+
+    this.capBase = 1.22 * s;
+    this.cap = new THREE.Group();
+    this.cap.position.y = this.capBase;
+    this.body.add(this.cap);
+    const Hc = R * 0.72;
+    this.Hc = Hc;
+    const dome = [v2(R * 0.84, -0.12)];
+    for (let i = 0; i <= 14; i++) {
+      const a = (i / 14) * (Math.PI / 2);
+      dome.push(v2(Math.max(0.0001, R * Math.cos(a)), Hc * Math.sin(a)));
+    }
+    this.cap.add(new THREE.Mesh(new THREE.LatheGeometry(dome, 44), this.mat(color)));
+    this.cap.add(mesh(new THREE.CircleGeometry(R * 0.86, 36), toon(0xffe2b8, { side: THREE.DoubleSide }), { p: [0, -0.11, 0], r: [Math.PI / 2, 0, 0] }));
+    this.dots = new THREE.Group();
+    this.cap.add(this.dots);
+    const dotMat = this.mat(0xffffff);
+    const spots = [[Math.PI / 2, 0.35, 0.3], [Math.PI / 2 + 0.75, 0.7, 0.26], [Math.PI / 2 - 0.8, 0.62, 0.24], [0.2, 0.3, 0.26],
+      [Math.PI - 0.2, 0.28, 0.27], [Math.PI / 2, 1.1, 0.22], [-1.0, 0.5, 0.25], [Math.PI + 1.0, 0.55, 0.25], [-Math.PI / 2, 0.9, 0.24]];
+    for (const [th, ph, size] of spots) {
+      const p = v3(R * Math.cos(ph) * Math.cos(th), Hc * Math.sin(ph), R * Math.cos(ph) * Math.sin(th));
+      const n = v3(p.x / (R * R), p.y / (Hc * Hc), p.z / (R * R)).normalize();
+      const d = mesh(G.sphLo, dotMat, { s: [size * s * 1.3, size * s * 1.3, 0.06] });
+      d.position.copy(p).addScaledVector(n, 0.01);
+      d.quaternion.setFromUnitVectors(v3(0, 0, 1), n);
+      this.dots.add(d);
+    }
+    this.focus.position.set(0, this.capBase + Hc, 0);
+    this.halo.position.set(0, this.capBase + Hc * 0.4, 0.3);
+    this.haloSize = R * 3.2;
+    const hh = this.capBase + Hc + 0.9;
+    this.addHit(new THREE.CylinderGeometry(R + 0.5, R + 0.5, hh, 18), [0, hh / 2, 0]);
+  }
+  sound() { Sound.drum(this.low); }
+  react() {
+    const m = MF();
+    this.squash.kick(1.2 * m);
+    this.later(0.07, () => this.capJump.kick(0.9 * m));
+    this.dotPop.kick(1 * m);
+  }
+  emit() {
+    const top = this.worldFocus();
+    particles.ring(this.group.position, this.color);
+    burst(top.clone().add(v3(0, 0.3, 0.3)), this.color, { notes: 2, sparks: 7, noteColor: this.color });
+  }
+  animate(dt, t) {
+    this.capJump.update(dt); this.dotPop.update(dt);
+    const sq = this.squash.x;
+    const breathe = Math.sin(t * 1.6 + this.phase) * 0.015 * MF();
+    this.stalk.scale.set(1 + 0.12 * sq, 1 - 0.12 * sq + breathe, 1 + 0.12 * sq);
+    this.cap.scale.set(1 + 0.22 * sq, 1 - 0.3 * sq, 1 + 0.22 * sq);
+    this.cap.position.y = this.capBase * (1 - 0.12 * sq + breathe) + Math.max(-0.1, this.capJump.x * 0.5);
+    this.cap.rotation.z = this.capJump.x * 0.08;
+    this.dots.scale.setScalar(1 + 0.45 * Math.max(0, this.dotPop.x));
+  }
+}
+
+/* ---------- Frog xylophone ---------- */
+class FrogXylophone extends Instrument {
+  constructor() {
+    super('xylo', 0x5cc85c, 2.3);
+    this.notes = PENTA;
+    const barColors = [0xff6b6b, 0xffa94d, 0xffd43b, 0x69db7c, 0x4dabf7];
+    const wood = toon(0xa86b3c), metal = toon(0xe7edf3);
+    this.xy = new THREE.Group();
+    this.xy.position.z = 0.55;
+    this.body.add(this.xy);
+    for (const z of [-0.42, 0.42]) this.xy.add(mesh(G.box, wood, { p: [0, 0.62, z], s: [3.75, 0.14, 0.18] }));
+    for (const x of [-1.7, 1.7]) for (const z of [-0.42, 0.42]) this.xy.add(mesh(G.cyl, wood, { p: [x, 0.3, z], s: [0.08, 0.6, 0.08] }));
+    this.bars = barColors.map((c, i) => {
+      const mat = toon(c, { emissive: new THREE.Color(c), emissiveIntensity: 0 });
+      const L = 1.75 - i * 0.16, x = (i - 2) * 0.68;
+      const bar = mesh(G.box, mat, { p: [x, 0.78, 0], s: [0.56, 0.16, L] });
+      this.xy.add(bar);
+      for (const z of [-0.42, 0.42]) bar.add(mesh(G.sphLo, metal, { p: [0, 0.55, z / L], s: [0.12 / 0.56, 0.3, 0.12 / L] }));
+      this.addHit(new THREE.BoxGeometry(0.68, 1.5, L + 1.1), [x, 0.9, 0.55 + 0.35], i);
+      return { mesh: bar, mat, spring: new Spring(320, 11), glow: 0, x, color: new THREE.Color(c) };
+    });
+
+    // the frog
+    this.frog = new THREE.Group();
+    this.frog.position.z = -1.35;
+    this.body.add(this.frog);
+    this.hop = { y: 0, v: 0 };
+    const frogMat = this.mat(0x5cc85c), bellyMat = this.mat(0xd8f5a2);
+    this.frog.add(mesh(G.sph, frogMat, { p: [0, 0.95, 0], s: [1.2, 0.92, 0.95] }));
+    this.frog.add(mesh(G.sph, bellyMat, { p: [0, 0.78, 0.42], s: [0.8, 0.6, 0.55] }));
+    this.frogEyes = [];
+    for (const sx of [-1, 1]) {
+      this.frog.add(mesh(G.sph, frogMat, { p: [sx * 0.5, 1.7, 0.15], s: 0.37 }));
+      const eye = new THREE.Group();
+      eye.position.set(sx * 0.5, 1.76, 0.4);
+      eye.add(mesh(G.sph, M.white, { s: [0.26, 0.28, 0.16] }));
+      const pupil = mesh(G.sph, M.black, { p: [0, -0.02, 0.12], s: [0.14, 0.17, 0.07] });
+      eye.add(pupil);
+      eye.add(mesh(G.sphLo, M.white, { p: [0.06, 0.07, 0.18], s: 0.05 }));
+      this.frog.add(eye);
+      this.frogEyes.push({ eye, pupil });
+      this.frog.add(mesh(G.sphLo, M.cheek, { p: [sx * 0.72, 1.12, 0.6], s: [0.14, 0.09, 0.05] }));
+      this.frog.add(mesh(G.sph, frogMat, { p: [sx * 0.78, 0.12, 0.45], s: [0.42, 0.12, 0.32] }));
+    }
+    this.frog.add(mesh(new THREE.TorusGeometry(0.42, 0.04, 8, 28, Math.PI), M.mouth, { p: [0, 1.28, 0.88], r: [-0.25, 0, Math.PI] }));
+    this.pouch = mesh(G.sph, toon(0xfff3b0), { p: [0, 1.0, 0.8], s: [0.3, 0.2, 0.2] });
+    this.pouchBase = this.pouch.scale.clone();
+    this.frog.add(this.pouch);
+    this.puff = new Spring(120, 8);
+    this.tongue = new THREE.Group();
+    this.tongue.position.set(0, 1.16, 0.9);
+    const tongueMat = toon(0xff6f91);
+    this.tongueStrip = mesh(G.box, tongueMat, { p: [0, 0, 0.5], s: [0.16, 0.05, 1] });
+    this.tongueTip = mesh(G.sph, tongueMat, { p: [0, 0, 1], s: 0.13 });
+    this.tongue.add(this.tongueStrip, this.tongueTip);
+    this.tongue.visible = false;
+    this.frog.add(this.tongue);
+    this.tongueT = 0;
+    this.blinkT = 2; this.blink = 0;
+    this.arms = [-1, 1].map((sx) => {
+      const arm = new THREE.Group();
+      arm.position.set(sx * 0.95, 1.05, 0.45);
+      arm.add(mesh(new THREE.CapsuleGeometry(0.13, 0.5, 4, 10), frogMat, { p: [0, -0.05, 0.3], r: [Math.PI / 2 - 0.2, 0, 0] }));
+      arm.add(mesh(G.cyl, wood, { p: [0, -0.04, 0.95], s: [0.04, 0.9, 0.04], r: [Math.PI / 2, 0, 0] }));
+      arm.add(mesh(G.sph, toon(0xff5d73), { p: [0, -0.04, 1.42], s: 0.15 }));
+      arm.rotation.x = 0.2;
+      this.frog.add(arm);
+      return { arm, spring: new Spring(260, 12) };
+    });
+
+    this.focus.position.set(0, 1.2, 0.3);
+    this.halo.position.set(0, 1.3, -0.3);
+    this.haloSize = 5.5;
+    this.addHit(new THREE.SphereGeometry(1.5, 12, 10), [0, 1.25, -1.35], 'frog');
+  }
+  hoverPoint() { return this.worldFocus().add(v3(0, 2.1, 0.5)); }
+  defaultPart() { return 2; }
+  sound(part) {
+    if (part === 'frog') { Sound.ribbit(); [2, 3, 4].forEach((b, i) => Sound.xylo(this.notes[b], 0.65, 0.18 + i * 0.09)); }
+    else Sound.xylo(this.notes[part]);
+  }
+  hitBar(i, m) {
+    const b = this.bars[i];
+    b.spring.kick(1 * m); b.glow = 1;
+    const arm = this.arms[i < 2 ? 0 : i > 2 ? 1 : (Math.random() < 0.5 ? 0 : 1)];
+    arm.spring.kick(1 * m);
+  }
+  react(part) {
+    const m = MF();
+    if (part === 'frog') {
+      this.hop.v = 5.2 * Math.sqrt(m);
+      this.tongueT = 0.55;
+      this.puff.kick(1.4 * m);
+      [2, 3, 4].forEach((b, i) => this.later(0.18 + i * 0.09, () => this.hitBar(b, m)));
+    } else {
+      this.hitBar(part, m);
+      this.puff.kick(0.7 * m);
+      if (!settings.reduced) this.hop.v = Math.max(this.hop.v, 2.2);
+    }
+  }
+  emit(part) {
+    const bar = part === 'frog' ? this.bars[3] : this.bars[part];
+    const p = new THREE.Vector3(bar.x, 1.2, 0.6);
+    this.body.localToWorld(p);
+    burst(p, bar.color, { notes: part === 'frog' ? 3 : 1, sparks: 5, noteColor: bar.color });
+    if (part === 'frog') burst(this.worldFocus().add(v3(0, 0.6, -0.5)), 0x7ddc6a, { petals: 5 });
+  }
+  animate(dt, t) {
+    const m = MF();
+    for (const b of this.bars) {
+      b.spring.update(dt);
+      b.glow = Math.max(0, b.glow - dt * 1.6);
+      b.mesh.position.y = 0.78 - Math.max(-0.08, b.spring.x * 0.1);
+      b.mat.emissiveIntensity = Math.max(b.glow * 0.55, this.light * 0.4);
+    }
+    for (const a of this.arms) { a.spring.update(dt); a.arm.rotation.x = 0.2 + a.spring.x * 0.45 + Math.sin(t * 2 + a.arm.position.x) * 0.03 * m; }
+    // hop
+    if (this.hop.y > 0 || this.hop.v > 0) {
+      this.hop.v -= 24 * dt; this.hop.y += this.hop.v * dt;
+      if (this.hop.y <= 0) { this.hop.y = 0; this.hop.v = 0; this.squash.kick(0.5 * m); }
+    }
+    const sq = this.squash.x;
+    this.frog.position.y = this.hop.y;
+    this.frog.scale.set(1 + sq * 0.12, 1 - sq * 0.14 + Math.sin(t * 1.5) * 0.012 * m, 1 + sq * 0.12);
+    this.puff.update(dt);
+    const pf = 1 + Math.max(0, this.puff.x) * 0.9;
+    this.pouch.scale.set(this.pouchBase.x * pf, this.pouchBase.y * pf, this.pouchBase.z * pf);
+    // tongue
+    if (this.tongueT > 0) {
+      this.tongueT -= dt;
+      const u = 1 - this.tongueT / 0.55;
+      const len = Math.sin(Math.PI * Math.min(1, u)) * 1.1 * (settings.reduced ? 0.6 : 1);
+      this.tongue.visible = len > 0.03;
+      this.tongueStrip.scale.z = Math.max(0.01, len); this.tongueStrip.position.z = len / 2;
+      this.tongueTip.position.z = len;
+    } else this.tongue.visible = false;
+    // eyes: blink and glance around
+    this.blinkT -= dt;
+    if (this.blinkT < 0) { this.blink = 0.14; this.blinkT = rand(2, 5); }
+    this.blink -= dt;
+    const happy = this.glow > 0.3 ? 0.35 : 1;
+    for (const e of this.frogEyes) {
+      e.eye.scale.y = this.blink > 0 ? 0.12 : happy;
+      e.pupil.position.x = Math.sin(t * 0.7) * 0.06 * m;
+    }
+  }
+}
+
+/* ---------- Dancing seed characters (shakers) ---------- */
+class SeedBand extends Instrument {
+  constructor() {
+    super('seeds', 0xe0a050, 1.9);
+    const colors = [0xc8874a, 0xe9b44c, 0xb0703f];
+    const pos = [[-0.92, 0, 0], [0, 0, 0.3], [0.92, 0, 0]];
+    const prof = [];
+    for (let i = 0; i <= 18; i++) {
+      const u = i / 18;
+      prof.push(v2(Math.max(0.0001, 0.56 * Math.pow(Math.sin(Math.PI * u), 0.85) * (1 - 0.45 * u)), u * 1.35));
+    }
+    const geo = new THREE.LatheGeometry(prof, 28);
+    const dark = toon(0x6b4226);
+    this.seeds = pos.map((p, i) => {
+      const pivot = new THREE.Group();
+      pivot.position.set(p[0], p[1], p[2]);
+      this.body.add(pivot);
+      const inner = new THREE.Group();
+      pivot.add(inner);
+      inner.add(new THREE.Mesh(geo, this.mat(colors[i])));
+      inner.add(mesh(G.cyl, M.stem, { p: [0, 1.48, 0], s: [0.035, 0.32, 0.035] }));
+      for (const sx of [-1, 1]) {
+        inner.add(mesh(G.sph, M.leaf, { p: [sx * 0.14, 1.62, 0], s: [0.17, 0.05, 0.09], r: [0, 0, sx * 0.5] }));
+        inner.add(mesh(G.sphLo, dark, { p: [sx * 0.18, 0.05, 0.14], s: [0.15, 0.07, 0.2] }));
+      }
+      const face = new Face(1.05);
+      face.group.position.set(0, 0.56, 0.47);
+      face.group.rotation.x = -0.1;
+      inner.add(face.group);
+      this.faces.push(face);
+      this.addHit(new THREE.CylinderGeometry(0.62, 0.62, 2.3, 12), [p[0], 1.0, p[2] + 0.2], i);
+      return { pivot, inner, face, y: 0, v: 0, spin: 0, spinTo: 0, sq: new Spring(240, 11), phase: i * 2.1 };
+    });
+    this.focus.position.set(0, 1.25, 0.3);
+    this.halo.position.set(0, 0.9, 0.3);
+    this.haloSize = 4.4;
+  }
+  defaultPart() { return 1; }
+  sound() { Sound.shaker(); Sound.giggle(); }
+  jump(s, v) { if (s.y <= 0.01) s.v = v; }
+  react(part) {
+    const m = MF();
+    this.seeds.forEach((s, i) => {
+      if (i === part) {
+        this.jump(s, 6.2 * Math.sqrt(m));
+        if (!settings.reduced) s.spinTo += TAU;
+      } else {
+        this.later(0.09 + 0.07 * Math.abs(i - part), () => this.jump(s, 3.4 * Math.sqrt(m)));
+      }
+    });
+  }
+  emit(part) {
+    const p = new THREE.Vector3();
+    this.seeds[part].pivot.getWorldPosition(p).add(v3(0, 1.6, 0.3));
+    burst(p, 0x8ad86a, { petals: 4, notes: 1, sparks: 4, noteColor: 0xffb347 });
+  }
+  animate(dt, t) {
+    const m = MF();
+    const party = Game.party;
+    const speed = party ? Math.PI / Game.beatLen : 2.6;
+    const tt = party ? (clock.t - Game.beat0) : t;
+    for (const s of this.seeds) {
+      if (s.y > 0 || s.v > 0) {
+        s.v -= 22 * dt; s.y += s.v * dt;
+        if (s.y <= 0) { s.y = 0; s.v = 0; s.sq.kick(0.6 * m); }
+      }
+      s.sq.update(dt);
+      const ph = tt * speed + s.phase;
+      const amp = (party ? 1.7 : 1) * m;
+      s.inner.position.y = s.y + Math.abs(Math.sin(ph)) * 0.13 * amp;
+      s.inner.rotation.z = Math.sin(ph) * 0.13 * amp;
+      s.spin += (s.spinTo - s.spin) * Math.min(1, dt * 5);
+      s.inner.rotation.y = s.spin;
+      const q = s.sq.x;
+      s.inner.scale.set(1 + q * 0.18, 1 - q * 0.2, 1 + q * 0.18);
+    }
+  }
+}
+
+/* =====================================================================
+   Garden band: dancing flowers earned in "Copy the Firefly"
+   ===================================================================== */
+class Dancer {
+  constructor(color, i) {
+    this.i = i;
+    this.color = new THREE.Color(color);
+    this.group = new THREE.Group();
+    this.group.visible = false;
+    this.inner = new THREE.Group();
+    this.group.add(this.inner);
+    this.s = 0; this.sv = 0; this.target = 0; this.active = false;
+    this.phase = i * 1.3; this.spin = 0; this.spinTo = 0;
+    this.inner.add(mesh(G.cyl, M.stem, { p: [0, 0.6, 0], s: [0.07, 1.2, 0.07] }));
+    this.arms = [-1, 1].map((sx) => {
+      const a = new THREE.Group();
+      a.position.set(sx * 0.06, 0.62, 0);
+      a.add(mesh(G.sph, M.leaf, { p: [sx * 0.3, 0, 0], s: [0.32, 0.08, 0.15] }));
+      this.inner.add(a);
+      return a;
+    });
+    this.head = new THREE.Group();
+    this.head.position.y = 1.38;
+    this.inner.add(this.head);
+    const petalMat = toon(color, { emissive: new THREE.Color(color), emissiveIntensity: 0.1 });
+    for (let k = 0; k < 9; k++) {
+      const a = (k / 9) * TAU;
+      const p = mesh(G.sphLo, petalMat, { p: [Math.cos(a) * 0.46, Math.sin(a) * 0.46, -0.03], s: [0.18, 0.32, 0.08] });
+      p.rotation.z = a - Math.PI / 2;
+      this.head.add(p);
+    }
+    this.head.add(mesh(G.cyl, toon(0xffd84d), { r: [Math.PI / 2, 0, 0], s: [0.32, 0.14, 0.32] }));
+    this.face = new Face(0.95);
+    this.face.group.position.set(0, -0.01, 0.08);
+    this.head.add(this.face.group);
+    this.inner.add(mesh(G.sph, M.leaf, { p: [0, 0.02, 0], s: [0.45, 0.1, 0.3] }));
+    const hit = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.75, 2.4, 10), hitMat);
+    hit.position.y = 1.0;
+    hit.userData = { target: this, part: null };
+    this.group.add(hit);
+    hitTargets.push(hit);
+    scene.add(this.group);
+  }
+  appear() {
+    this.active = true; this.group.visible = true; this.target = 1;
+    Sound.pop();
+    const p = new THREE.Vector3();
+    this.head.getWorldPosition(p);
+    p.y += 1.0;
+    burst(p, this.color, { petals: 10, sparks: 8 });
+  }
+  leave() { this.target = 0; }
+  tickle() {
+    if (!settings.reduced) this.spinTo += TAU;
+    this.face.react();
+    Sound.la(PENTA[(Math.random() * 5) | 0] * 2);
+    const p = new THREE.Vector3();
+    this.head.getWorldPosition(p);
+    burst(p, this.color, { notes: 1, sparks: 3, noteColor: this.color });
+  }
+  update(dt, t) {
+    this.sv += (120 * (this.target - this.s) - 9 * this.sv) * dt;
+    this.s += this.sv * dt;
+    if (this.target === 0 && this.s < 0.03) { this.s = 0; this.sv = 0; this.group.visible = false; this.active = false; }
+    this.group.scale.setScalar(Math.max(0.0001, this.s) * 1.7);
+    const m = MF();
+    const party = Game.party;
+    const ph = party ? ((clock.t - Game.beat0) / Game.beatLen) * Math.PI + this.phase * 0.2 : t * 2.2 + this.phase;
+    const amp = (party ? 1.8 : 1) * m;
+    this.inner.position.y = Math.abs(Math.sin(ph)) * 0.14 * amp;
+    this.inner.rotation.z = Math.sin(ph) * 0.12 * amp;
+    this.arms[0].rotation.z = 0.5 + Math.sin(ph * 2) * 0.5 * amp;
+    this.arms[1].rotation.z = -0.5 - Math.sin(ph * 2 + 1) * 0.5 * amp;
+    this.spin += (this.spinTo - this.spin) * Math.min(1, dt * 4);
+    this.head.rotation.z = Math.sin(ph * 0.5) * 0.25 * amp + this.spin;
+    this.face.update(dt);
+  }
+}
+
+const band = {
+  dancers: [new Dancer(0xff8fb8, 0), new Dancer(0xb388ff, 1), new Dancer(0xffa64d, 2)],
+  count: 0,
+  add() { if (this.count < this.dancers.length) this.dancers[this.count++].appear(); },
+  reset() { this.dancers.forEach((d) => d.leave()); this.count = 0; },
+};
+
+/* =====================================================================
+   The firefly guide
+   ===================================================================== */
+class Firefly {
+  constructor() {
+    this.group = new THREE.Group();
+    this.inner = new THREE.Group();
+    this.group.add(this.inner);
+    this.inner.scale.setScalar(1.25);
+    const glowMat = new THREE.MeshToonMaterial({ color: 0xfff27a, emissive: 0xffe14d, emissiveIntensity: 1, gradientMap });
+    this.inner.add(mesh(G.sph, glowMat, { p: [0, -0.04, -0.24], s: [0.26, 0.24, 0.32] }));
+    this.inner.add(mesh(G.sph, toon(0x6a4fa3), { p: [0, 0.05, 0.1], s: 0.23 }));
+    this.face = new Face(0.78);
+    this.face.group.position.set(0, 0.06, 0.31);
+    this.inner.add(this.face.group);
+    for (const sx of [-1, 1]) {
+      this.inner.add(mesh(G.cyl, toon(0x6a4fa3), { p: [sx * 0.1, 0.36, 0.12], s: [0.02, 0.3, 0.02], r: [0, 0, -sx * 0.35] }));
+      this.inner.add(mesh(G.sphLo, glowMat, { p: [sx * 0.16, 0.5, 0.12], s: 0.06 }));
+    }
+    const wingMat = new THREE.MeshBasicMaterial({ map: TEX.wing, transparent: true, depthWrite: false, side: THREE.DoubleSide });
+    this.wings = [-1, 1].map((sx) => {
+      const w = new THREE.Group();
+      w.position.set(sx * 0.1, 0.2, -0.05);
+      const plane = new THREE.Mesh(new THREE.PlaneGeometry(0.6, 0.3), wingMat);
+      plane.position.x = sx * 0.3;
+      plane.rotation.x = -Math.PI / 2 + 0.3;
+      w.add(plane);
+      this.inner.add(w);
+      return { w, sx };
+    });
+    this.halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.glow, color: 0xfff07a, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }));
+    this.halo.scale.setScalar(2.6);
+    this.group.add(this.halo);
+    this.lamp = new THREE.PointLight(0xfff0a0, 0, 9, 1.3);
+    this.group.add(this.lamp);
+    const hit = new THREE.Mesh(new THREE.SphereGeometry(1.0, 10, 8), hitMat);
+    hit.userData = { target: this, part: null };
+    this.group.add(hit);
+    hitTargets.push(hit);
+    this.home = v3(-16, 9, 1);
+    this.pos = this.home.clone();
+    this.hoverAt = this.pos.clone();
+    this.path = null; this.active = false; this.leaving = false;
+    this.flash = 0; this.dip = 0; this.loopT = 0; this.loopDur = 1; this.trailT = 0; this.wanderT = 0;
+    this.group.visible = false;
+    scene.add(this.group);
+  }
+  enter() {
+    this.active = true; this.leaving = false; this.group.visible = true;
+    if (this.pos.distanceTo(this.home) < 1) this.pos.copy(this.home);
+  }
+  leave() { this.leaving = true; this.flyTo(this.home, 1.6); }
+  flyTo(target, dur = 1.25) {
+    const from = this.pos.clone(), to = target.clone();
+    const ctrl = from.clone().lerp(to, 0.5);
+    ctrl.y += (0.8 + 0.12 * from.distanceTo(to)) * (settings.reduced ? 0.4 : 1);
+    this.path = { from, ctrl, to, u: 0, dur };
+    this.hoverAt.copy(to);
+  }
+  tap() { this.dip = 1; this.flash = 1; burst(this.pos, 0xfff27a, { sparks: 6 }); }
+  invite() { this.loopT = this.loopDur = 1.6; this.flash = 0.8; }
+  happy() { this.loopT = this.loopDur = 1.0; this.flash = 1; }
+  update(dt, t) {
+    if (!this.group.visible) { this.lamp.intensity = 0; return; }
+    const m = MF();
+    let moving = false;
+    if (this.path) {
+      const P = this.path;
+      P.u = Math.min(1, P.u + dt / P.dur);
+      const u = P.u, e = u < 0.5 ? 2 * u * u : 1 - Math.pow(-2 * u + 2, 2) / 2;
+      const a = P.from.clone().lerp(P.ctrl, e), b = P.ctrl.clone().lerp(P.to, e);
+      const prevX = this.pos.x;
+      this.pos.copy(a.lerp(b, e));
+      this.inner.rotation.z = THREE.MathUtils.clamp((this.pos.x - prevX) / Math.max(dt, 1e-3) * -0.05, -0.4, 0.4) * m;
+      moving = true;
+      if (u >= 1) {
+        this.path = null;
+        if (this.leaving) { this.group.visible = false; this.active = false; this.leaving = false; }
+      }
+    } else {
+      this.pos.lerp(this.hoverAt, 1 - Math.exp(-dt * 3));
+      this.inner.rotation.z *= Math.exp(-dt * 4);
+    }
+    const off = v3(Math.sin(t * 1.7) * 0.1 * m, Math.sin(t * 2.4) * 0.14 * m, 0);
+    if (this.loopT > 0) {
+      this.loopT -= dt;
+      const a = (1 - this.loopT / this.loopDur) * TAU;
+      const r = 0.55 * m;
+      off.x += Math.sin(a) * r; off.y += (1 - Math.cos(a)) * r;
+    }
+    if (this.dip > 0) { this.dip = Math.max(0, this.dip - dt * 3); off.y -= Math.sin(this.dip * Math.PI) * 0.5; }
+    this.group.position.copy(this.pos).add(off);
+    const flap = settings.reduced ? 9 : 26;
+    for (const { w, sx } of this.wings) w.rotation.z = sx * (0.25 + Math.sin(t * flap) * 0.55);
+    this.flash = Math.max(0, this.flash - dt * 1.5);
+    const glow = 0.8 + 0.2 * Math.sin(t * 3);
+    this.halo.material.opacity = 0.6 * glow + 0.4 * this.flash;
+    this.halo.scale.setScalar(2.6 + this.flash * 1.6);
+    this.lamp.intensity = 5 + this.flash * 10;
+    this.face.update(dt);
+    this.trailT -= dt;
+    if (moving && this.trailT < 0 && !settings.reduced) { this.trailT = 0.06; particles.spawn('trail', this.group.position, 0xfff27a); }
+  }
+}
+
+/* =====================================================================
+   Build the garden
+   ===================================================================== */
+function buildGarden() {
+  const ground = mesh(new THREE.CircleGeometry(60, 64), toon(0x9be07a), { r: [-Math.PI / 2, 0, 0] });
+  ground.receiveShadow = true;
+  ground.name = 'ground';
+  scene.add(ground);
+  for (let i = 0; i < 14; i++) {
+    const r = rand(1.2, 3.2);
+    const patch = mesh(new THREE.CircleGeometry(r, 24), toon(i % 2 ? 0x8fd86c : 0xa8e88a), { p: [rand(-16, 16), 0.01 + i * 0.001, rand(-12, 8)], r: [-Math.PI / 2, 0, 0] });
+    patch.receiveShadow = true;
+    scene.add(patch);
+  }
+  // grass tufts
+  const tuftGeo = new THREE.ConeGeometry(0.1, 0.45, 5);
+  tuftGeo.translate(0, 0.22, 0);
+  const tufts = new THREE.InstancedMesh(tuftGeo, toon(0x62bb48), 320);
+  const tmp = new THREE.Object3D();
+  for (let i = 0; i < 320; i++) {
+    tmp.position.set(rand(-22, 22), 0, rand(-15, 9));
+    tmp.rotation.set(rand(-0.2, 0.2), rand(0, TAU), rand(-0.25, 0.25));
+    tmp.scale.setScalar(rand(0.7, 1.4));
+    tmp.updateMatrix();
+    tufts.setMatrixAt(i, tmp.matrix);
+  }
+  scene.add(tufts);
+  // tiny decorative flowers
+  const tinyCols = [0xffffff, 0xfff176, 0xffb3d9, 0xc5a3ff, 0xffcc80];
+  const tiny = new THREE.InstancedMesh(new THREE.SphereGeometry(0.13, 8, 6), toon(0xffffff), 150);
+  for (let i = 0; i < 150; i++) {
+    tmp.position.set(rand(-22, 22), 0.13, rand(-15, 9));
+    tmp.rotation.set(0, 0, 0); tmp.scale.setScalar(rand(0.8, 1.3));
+    tmp.updateMatrix();
+    tiny.setMatrixAt(i, tmp.matrix);
+    tiny.setColorAt(i, new THREE.Color(tinyCols[i % tinyCols.length]));
+  }
+  scene.add(tiny);
+  // the band hill + far hills
+  const hill = mesh(G.sph, toon(0x86d36a), { p: [0, -0.6, -19], s: [16, 6, 5] });
+  hill.receiveShadow = true;
+  scene.add(hill);
+  scene.add(mesh(G.sph, toon(0x9fd8a0), { p: [-22, -3, -32], s: [18, 10, 6] }));
+  scene.add(mesh(G.sph, toon(0xa6dcae), { p: [22, -3, -30], s: [18, 9, 6] }));
+  // hedges & trees on the sides
+  const bushMat = toon(0x58b84a);
+  for (const sx of [-1, 1]) {
+    for (let i = 0; i < 6; i++) {
+      const b = mesh(G.sph, bushMat, { p: [sx * rand(12, 17), rand(0.4, 0.9), -10 + i * 3.2], s: rand(1.2, 1.9) });
+      b.castShadow = true;
+      scene.add(b);
+    }
+    const tree = new THREE.Group();
+    tree.position.set(sx * 13, 0, -6.5);
+    tree.add(mesh(G.cyl, toon(0x9a6a43), { p: [0, 1.6, 0], s: [0.38, 3.2, 0.38] }));
+    for (const [x, y, z, r] of [[0, 4.2, 0, 2], [-1.2, 3.6, 0.4, 1.4], [1.2, 3.7, -0.2, 1.5], [0.2, 5.3, 0, 1.4]]) {
+      tree.add(mesh(G.sph, toon(0x4caf50), { p: [x, y, z], s: r }));
+    }
+    for (let k = 0; k < 4; k++) tree.add(mesh(G.sphLo, toon(0xff6b6b), { p: [rand(-1.5, 1.5), rand(3.2, 5), rand(1.1, 1.6)], s: 0.2 }));
+    tree.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    scene.add(tree);
+  }
+  // sun & clouds
+  const sun = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.sun, fog: false }));
+  sun.position.set(19, 17, -40); sun.scale.setScalar(9);
+  scene.add(sun);
+  const clouds = [];
+  for (let i = 0; i < 6; i++) {
+    const c = new THREE.Sprite(new THREE.SpriteMaterial({ map: TEX.cloud, transparent: true, opacity: 0.95, fog: false }));
+    c.position.set(-30 + i * 12 + rand(-3, 3), rand(11, 17), rand(-45, -38));
+    const s = rand(7, 11);
+    c.scale.set(s, s / 2, 1);
+    c.userData.speed = rand(0.25, 0.5);
+    scene.add(c);
+    clouds.push(c);
+  }
+  return { ground, clouds };
+}
+
+const garden = buildGarden();
+new FlowerBell('bellPink', 0xff7eb6, NOTE.G4);
+new FlowerBell('bellYellow', 0xffd23f, NOTE.C5);
+new FlowerBell('bellBlue', 0x7aa8ff, NOTE.E5);
+new MushroomDrum('drumRed', 0xff5a5a, true, 1.5);
+new MushroomDrum('drumPurple', 0xa77bff, false, 1.15);
+new FrogXylophone();
+new SeedBand();
+const firefly = new Firefly();
+function castShadows(root) {
+  root.updateMatrixWorld(true);
+  const ws = new THREE.Vector3();
+  root.traverse((o) => {
+    if (!o.isMesh || o.userData.noShadow) return;
+    if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
+    o.getWorldScale(ws);
+    o.castShadow = o.geometry.boundingSphere.radius * Math.max(ws.x, ws.y, ws.z) > 0.3;
+  });
+}
+for (const inst of instruments) castShadows(inst.body);
+for (const d of band.dancers) castShadows(d.inner);
+
+/* =====================================================================
+   Layout: fixed camera, two arrangements (wide screens / tall screens)
+   ===================================================================== */
+const LAYOUTS = {
+  wide: {
+    cam: { pos: [0, 6.6, 16.5], look: [0, 2.6, -2], fov: 44, halfW: 8.2, dist: 17.5 },
+    pos: {
+      bellPink: [-5.5, 0, -3.2], bellYellow: [0, 0, -3.7], bellBlue: [5.5, 0, -3.2],
+      drumRed: [-5.4, 0, 1.4], seeds: [-1.95, 0, 2.3], xylo: [2.15, 0, 2.0], drumPurple: [5.8, 0, 1.3],
+    },
+    band: [-3.6, 0, 3.6], invite: [0, 6.4, 3.2],
+  },
+  tall: {
+    cam: { pos: [0, 13, 20], look: [0, 2.9, -2.2], fov: 48, halfW: 4.5, dist: 22 },
+    pos: {
+      bellPink: [-3.0, 0, -5.2], bellYellow: [0, 0, -5.7], bellBlue: [3.0, 0, -5.2],
+      drumRed: [-2.45, 0, -1.4], drumPurple: [2.55, 0, -1.5], xylo: [0, 0, 2.3], seeds: [0, 0, 6.9],
+    },
+    band: [-2.6, 0, 2.6], invite: [0, 8.6, 1.6],
+  },
+};
+let layout = LAYOUTS.wide;
+function hillY(x, z) {
+  const dx = x / 16, dz = (z + 19) / 5;
+  return -0.6 + 6 * Math.sqrt(Math.max(0, 1 - dx * dx - dz * dz));
+}
+function applyLayout() {
+  const w = window.innerWidth, h = window.innerHeight, a = w / h;
+  layout = a >= 1.05 ? LAYOUTS.wide : LAYOUTS.tall;
+  const C = layout.cam;
+  camera.position.set(...C.pos);
+  camera.lookAt(...C.look);
+  const tanV = Math.max(Math.tan(THREE.MathUtils.degToRad(C.fov / 2)), (C.halfW / C.dist) / a);
+  camera.fov = THREE.MathUtils.radToDeg(2 * Math.atan(tanV));
+  camera.aspect = a;
+  camera.updateProjectionMatrix();
+  for (const inst of instruments) inst.group.position.set(...layout.pos[inst.id]);
+  band.dancers.forEach((d, i) => { const x = layout.band[i], z = -17.6; d.group.position.set(x, hillY(x, z) - 0.15, z); });
+  renderer.setSize(w, h, false);
+  scene.updateMatrixWorld(true);
+}
+applyLayout();
+window.addEventListener('resize', applyLayout);
+window.addEventListener('orientationchange', () => setTimeout(applyLayout, 120));
+
+/* =====================================================================
+   Timeline (game clock based, so pauses with the page)
+   ===================================================================== */
+const timeline = {
+  items: [],
+  after(sec, fn, tag = 'copy') { this.items.push({ at: clock.t + sec, fn, tag }); },
+  clear(tag) { this.items = this.items.filter((i) => i.tag !== tag); },
+  update() {
+    if (!this.items.length) return;
+    const due = this.items.filter((i) => i.at <= clock.t);
+    if (!due.length) return;
+    this.items = this.items.filter((i) => i.at > clock.t);
+    due.sort((a, b) => a.at - b.at).forEach((i) => i.fn());
+  },
+};
+
+/* =====================================================================
+   UI helpers
+   ===================================================================== */
+const $ = (s) => document.querySelector(s);
+const ui = {
+  start: $('#start'), menu: $('#menu'), hud: $('#hud'), settings: $('#settings'),
+  copyBar: $('#copyBar'), dots: $('#dots'), hand: $('#hand'), replay: $('#btnReplay'),
+  show(el, on) { el.classList.toggle('hidden', !on); },
+  setDots(n) {
+    this.dots.innerHTML = '';
+    for (let i = 0; i < n; i++) { const d = document.createElement('div'); d.className = 'dot'; this.dots.appendChild(d); }
+  },
+  dot(i, state, color) {
+    const d = this.dots.children[i];
+    if (!d) return;
+    d.className = 'dot' + (state ? ' ' + state : '');
+    d.style.background = state === 'done' ? '#' + color.getHexString() : '';
+  },
+  clearDots() { [...this.dots.children].forEach((d) => { d.className = 'dot'; d.style.background = ''; }); },
+  setHand(on) { this.hand.classList.toggle('show', on); },
+};
+
+/* =====================================================================
+   Game modes
+   ===================================================================== */
+const Game = {
+  mode: 'start', // 'start' | 'menu' | 'free' | 'copy'
+  party: false, beat0: 0, beatLen: 60 / 112,
+  onPlayed(inst, part, source) {
+    if (source === 'tap' && this.mode === 'copy') Copy.onTap(inst);
+  },
+};
+
+const PATTERN_POOL = ['bellPink', 'bellYellow', 'bellBlue', 'drumRed', 'drumPurple', 'xylo', 'seeds'];
+
+const Copy = {
+  phase: 'off', // off | intro | demo | listen | oops | success | celebrate | replay
+  pattern: [], progress: 0, done: 0, lastClean: true, clean: true,
+  demoCount: 0, idleSince: 0, lastKey: '',
+
+  begin() {
+    timeline.clear('copy');
+    this.done = 0; this.lastClean = true; this.lastKey = '';
+    band.reset();
+    ui.show(ui.copyBar, true); ui.show(ui.replay, false); ui.setDots(0); ui.setHand(false);
+    this.phase = 'intro';
+    firefly.enter();
+    firefly.flyTo(v3(...layout.invite), 1.6);
+    timeline.after(1.4, () => Sound.chime());
+    timeline.after(2.0, () => this.newPattern());
+  },
+  end() {
+    timeline.clear('copy');
+    this.phase = 'off'; Game.party = false;
+    ui.show(ui.copyBar, false); ui.show(ui.replay, false);
+    band.reset();
+  },
+  length() {
+    if (settings.easy) return 2;
+    if (this.done === 0) return 2;          // always start gently
+    return this.lastClean ? 3 : 2;          // grow to three only after a smooth round
+  },
+  makePattern(len) {
+    for (let tries = 0; tries < 30; tries++) {
+      const pool = PATTERN_POOL.slice();
+      const out = [];
+      while (out.length < len) out.push(pool.splice((Math.random() * pool.length) | 0, 1)[0]);
+      const key = out.join(',');
+      if (key !== this.lastKey) { this.lastKey = key; return out; }
+    }
+    return PATTERN_POOL.slice(0, len);
+  },
+  newPattern() {
+    this.pattern = this.makePattern(this.length());
+    this.clean = true;
+    ui.setDots(this.pattern.length);
+    this.demo();
+  },
+  /** The firefly slowly visits each instrument in order and plays it. */
+  demo() {
+    timeline.clear('copy');
+    this.phase = 'demo'; this.progress = 0; this.demoCount++;
+    ui.clearDots(); ui.setHand(false);
+    let t = 0.5;
+    this.pattern.forEach((id, i) => {
+      const inst = byId[id];
+      timeline.after(t, () => { firefly.flyTo(inst.hoverPoint(), 1.2); inst.lightUp(2.1); });
+      t += 1.3;
+      timeline.after(t, () => { firefly.tap(); inst.play(null, 'demo'); ui.dot(i, 'lit'); });
+      t += 1.15;
+    });
+    timeline.after(t, () => firefly.flyTo(v3(...layout.invite), 1.1));
+    t += 1.15;
+    timeline.after(t, () => this.invite());
+  },
+  invite() {
+    this.phase = 'listen'; this.progress = 0;
+    this.idleSince = clock.t;
+    ui.clearDots(); ui.setHand(true);
+    firefly.invite();
+    Sound.chime();
+  },
+  onTap(inst) {
+    if (this.phase !== 'listen') return; // taps always make music; they only count while listening
+    this.idleSince = clock.t;
+    if (inst.id === this.pattern[this.progress]) {
+      ui.dot(this.progress, 'done', inst.color);
+      this.progress++;
+      firefly.happy();
+      burst(inst.worldFocus().add(v3(0, 0.8, 0.5)), 0xfff27a, { sparks: 8 });
+      if (this.progress >= this.pattern.length) this.success();
+    } else {
+      // No failure: the child hears their sound, then the firefly kindly shows it again.
+      this.clean = false;
+      this.phase = 'oops';
+      ui.setHand(false);
+      timeline.after(1.3, () => this.demo());
+    }
+  },
+  success() {
+    this.phase = 'success';
+    ui.setHand(false);
+    this.lastClean = this.clean;
+    timeline.after(0.35, () => Sound.success());
+    timeline.after(0.9, () => { band.add(); });
+    this.done++;
+    if (this.done >= 3) timeline.after(2.6, () => this.celebrate());
+    else timeline.after(3.0, () => this.newPattern());
+  },
+  /** The garden band plays a short song; the child can join in by tapping. */
+  celebrate() {
+    this.phase = 'celebrate';
+    ui.setDots(0); ui.show(ui.copyBar, false);
+    Game.party = true; Game.beat0 = clock.t;
+    const B = Game.beatLen;
+    for (const [beat, id, part] of SONG) timeline.after(beat * B, () => byId[id].play(part, 'song'));
+    for (let b = 0; b < 16; b += 2) {
+      timeline.after(b * B, () => {
+        for (let i = 0; i < N(6); i++) particles.spawn('confetti', v3(rand(-8, 8), rand(8, 10), rand(-4, 4)), [0xff7eb6, 0xffd23f, 0x7aa8ff, 0xb388ff, 0x8ad86a][(Math.random() * 5) | 0]);
+      });
+    }
+    timeline.after(0.2, () => firefly.happy());
+    for (let b = 4; b < 16; b += 4) timeline.after(b * B, () => firefly.flyTo(v3(rand(-4, 4), rand(5.5, 7), rand(1, 3)), B * 3));
+    timeline.after(16.5 * B, () => {
+      Game.party = false;
+      this.phase = 'replay';
+      firefly.flyTo(v3(...layout.invite), 1.2);
+      ui.show(ui.replay, true);
+    });
+  },
+  replay() {
+    ui.show(ui.replay, false);
+    band.reset();
+    this.done = 0; this.lastClean = true;
+    ui.show(ui.copyBar, true); ui.setDots(0);
+    this.phase = 'intro';
+    timeline.after(1.2, () => this.newPattern());
+  },
+  tick() {
+    // Gentle reminder: if nobody has tapped for a while, the firefly simply shows the pattern again.
+    if (this.phase === 'listen' && clock.t - this.idleSince > 16) this.demo();
+  },
+};
+
+// [beat, instrument, part] — every melodic note is in C-major pentatonic
+const SONG = [
+  [0, 'drumRed'], [0, 'bellYellow'], [1, 'seeds', 1], [1, 'xylo', 2], [1.5, 'drumPurple'], [2, 'drumRed'], [2, 'bellBlue'],
+  [3, 'xylo', 3], [3, 'seeds', 0], [3.5, 'drumPurple'],
+  [4, 'drumRed'], [4, 'xylo', 4], [5, 'xylo', 3], [5, 'seeds', 2], [6, 'drumRed'], [6, 'bellBlue'], [7, 'xylo', 2], [7.5, 'drumPurple'],
+  [8, 'drumRed'], [8, 'bellPink'], [9, 'xylo', 0], [9, 'seeds', 1], [9.5, 'xylo', 1], [10, 'drumRed'], [10, 'bellYellow'],
+  [11, 'xylo', 2], [11, 'seeds', 0], [11.5, 'drumPurple'],
+  [12, 'drumPurple'], [12, 'xylo', 0], [12.25, 'xylo', 1], [12.5, 'xylo', 2], [12.75, 'xylo', 3], [13, 'xylo', 4], [13, 'drumPurple'],
+  [13.5, 'seeds', 2], [14, 'bellPink'], [14, 'bellYellow'], [14, 'bellBlue'], [14, 'drumRed'], [14, 'seeds', 1],
+];
+
+const Free = {
+  begin() { firefly.enter(); firefly.flyTo(v3(-3, 6.5, 2), 1.8); firefly.wanderT = 3; },
+  tick(dt) {
+    firefly.wanderT -= dt;
+    if (firefly.wanderT < 0 && !firefly.path) {
+      firefly.wanderT = rand(4, 7);
+      const w = layout === LAYOUTS.wide;
+      firefly.flyTo(v3(rand(w ? -6 : -3, w ? 6 : 3), rand(5.6, 7.2), rand(0, 3.5)), rand(2.5, 3.5));
+    }
+  },
+};
+
+function setMode(mode) {
+  if (Game.mode === 'copy' && mode !== 'copy') Copy.end();
+  Game.mode = mode;
+  ui.show(ui.menu, mode === 'menu');
+  ui.show(ui.hud, mode === 'free' || mode === 'copy');
+  if (mode === 'menu') { if (firefly.active) firefly.leave(); }
+  if (mode === 'free') Free.begin();
+  if (mode === 'copy') Copy.begin();
+}
+
+/* =====================================================================
+   Input: oversized hit areas + forgiving "nearest instrument" fallback
+   ===================================================================== */
+const raycaster = new THREE.Raycaster();
+const ndc = new THREE.Vector2();
+const tmpV = new THREE.Vector3();
+
+function pick(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const live = hitTargets.filter((h) => {
+    const tg = h.userData.target;
+    return tg instanceof Instrument || tg.active;
+  });
+  const hits = raycaster.intersectObjects(live, false);
+  if (hits.length) return hits[0].object.userData;
+  // Fallback: a tap that is merely close to an instrument still plays it.
+  let best = null, bestD = Math.max(70, 0.13 * Math.min(rect.width, rect.height));
+  for (const h of hitTargets) {
+    if (!(h.userData.target instanceof Instrument)) continue;
+    h.getWorldPosition(tmpV).project(camera);
+    const x = (tmpV.x + 1) / 2 * rect.width + rect.left, y = (1 - tmpV.y) / 2 * rect.height + rect.top;
+    const d = Math.hypot(x - clientX, y - clientY);
+    if (d < bestD) { bestD = d; best = h.userData; }
+  }
+  return best;
+}
+
+function groundSparkle(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const p = raycaster.ray.at(14, new THREE.Vector3());
+  const g = raycaster.intersectObject(garden.ground, false)[0];
+  burst(g ? g.point.add(v3(0, 0.3, 0)) : p, 0x8ad86a, { sparks: 5, petals: 2 });
+}
+
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  Sound.resumeIfNeeded();
+  if (Game.mode !== 'free' && Game.mode !== 'copy') return;
+  const hit = pick(e.clientX, e.clientY);
+  if (!hit) { groundSparkle(e.clientX, e.clientY); return; }
+  const tg = hit.target;
+  if (tg instanceof Instrument) tg.play(hit.part, 'tap');
+  else if (tg === firefly) {
+    firefly.happy(); firefly.face.react(); Sound.chime();
+    if (Game.mode === 'copy' && Copy.phase === 'listen') timeline.after(0.6, () => Copy.demo()); // "show me again"
+  } else if (tg instanceof Dancer) tg.tickle();
+}, { passive: false });
+for (const ev of ['gesturestart', 'dblclick', 'contextmenu']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+
+/* =====================================================================
+   Buttons
+   ===================================================================== */
+function syncSettingsUI() {
+  const mute = $('#btnMute');
+  mute.classList.toggle('muted', settings.muted);
+  mute.setAttribute('aria-pressed', String(settings.muted));
+  $('#btnMotion').setAttribute('aria-pressed', String(settings.reduced));
+  $('#btnEasy').setAttribute('aria-pressed', String(settings.easy));
+  document.body.classList.toggle('reduced', settings.reduced);
+}
+syncSettingsUI();
+
+$('#btnPlay').addEventListener('click', () => {
+  Sound.unlock().then((ok) => { if (ok) Sound.chime(); });
+  ui.show(ui.start, false);
+  ui.show(ui.settings, true);
+  setMode('menu');
+});
+$('#btnFree').addEventListener('click', () => { Sound.resumeIfNeeded(); setMode('free'); });
+$('#btnCopy').addEventListener('click', () => { Sound.resumeIfNeeded(); setMode('copy'); });
+$('#btnHome').addEventListener('click', () => setMode('menu'));
+$('#btnReplay').addEventListener('click', () => { Sound.resumeIfNeeded(); Copy.replay(); });
+$('#btnMute').addEventListener('click', () => {
+  settings.muted = !settings.muted; store.set('muted', settings.muted);
+  Sound.setMuted(settings.muted); syncSettingsUI();
+});
+$('#btnMotion').addEventListener('click', () => {
+  settings.reduced = !settings.reduced; store.set('reduced', settings.reduced); syncSettingsUI();
+});
+$('#btnEasy').addEventListener('click', () => {
+  settings.easy = !settings.easy; store.set('easy', settings.easy); syncSettingsUI();
+});
+document.addEventListener('visibilitychange', () => {
+  if (!Sound.ctx) return;
+  if (document.hidden) Sound.ctx.suspend().catch(() => {});
+  else Sound.resumeIfNeeded();
+});
+
+/* =====================================================================
+   Main loop
+   ===================================================================== */
+let last = performance.now();
+renderer.setAnimationLoop((now) => {
+  const frameDt = Math.min(0.5, Math.max(0, (now - last) / 1000));
+  last = now;
+  // small fixed sub-steps keep springs stable even on slow devices
+  const steps = Math.max(1, Math.ceil(frameDt / 0.034));
+  const dt = frameDt / steps;
+  for (let k = 0; k < steps; k++) {
+    clock.t += dt;
+    const t = clock.t;
+    timeline.update();
+    if (Game.mode === 'copy') Copy.tick();
+    if (Game.mode === 'free') Free.tick(dt);
+    for (const inst of instruments) inst.update(dt, t);
+    for (const d of band.dancers) if (d.group.visible) d.update(dt, t);
+    firefly.update(dt, t);
+    particles.update(dt);
+  }
+  if (!settings.reduced) for (const c of garden.clouds) { c.position.x += c.userData.speed * frameDt; if (c.position.x > 40) c.position.x = -40; }
+  if (!document.hidden) adaptResolution(frameDt);
+  renderer.render(scene, camera);
+});
+
+/* =====================================================================
+   Read-only hooks for the automated self-test (tests/verify.mjs)
+   ===================================================================== */
+window.__garden = {
+  get mode() { return Game.mode; },
+  get phase() { return Copy.phase; },
+  get pattern() { return Copy.pattern.slice(); },
+  get progress() { return Copy.progress; },
+  get done() { return Copy.done; },
+  get demoCount() { return Copy.demoCount; },
+  get bandCount() { return band.dancers.filter((d) => d.active).length; },
+  get particles() { return particles.alive; },
+  get glow() { return Object.fromEntries(instruments.map((i) => [i.id, +Math.max(i.glow, i.light).toFixed(2)])); },
+  get settings() { return { ...settings }; },
+  get time() { return clock.t; },
+  playLog,
+  audioState: () => (Sound.ctx ? Sound.ctx.state : 'none'),
+  get peak() { Sound.sample(); return Sound.peak; },
+  get outputGain() { return Sound.master ? Sound.master.gain.value : null; },
+  resetPeak() { Sound.meter(true); Sound.peak = 0; },
+  ids: () => instruments.map((i) => i.id),
+  screenPos(id, part = null) {
+    const h = hitTargets.find((x) => x.userData.target.id === id && (part === null || x.userData.part === part));
+    if (!h) return null;
+    const p = h.getWorldPosition(new THREE.Vector3()).project(camera);
+    const r = canvas.getBoundingClientRect();
+    return { x: r.left + (p.x + 1) / 2 * r.width, y: r.top + (1 - p.y) / 2 * r.height };
+  },
+  fireflyScreenPos() {
+    const p = firefly.group.position.clone().project(camera);
+    const r = canvas.getBoundingClientRect();
+    return { x: r.left + (p.x + 1) / 2 * r.width, y: r.top + (1 - p.y) / 2 * r.height };
+  },
+};
+</script>
+</body>
+</html>

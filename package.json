@@ -1,0 +1,21 @@
+{
+  "name": "giggle-music-garden",
+  "private": true,
+  "version": "1.0.0",
+  "description": "The Giggle Music Garden - a colorful 3D musical playground for young children (Three.js + Web Audio).",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host",
+    "build": "vite build",
+    "preview": "vite preview --host",
+    "verify": "node tests/verify.mjs"
+  },
+  "dependencies": {
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "playwright": "1.56.1",
+    "vite": "^8.3.2",
+    "vite-plugin-singlefile": "^2.3.3"
+  }
+}
